@@ -1,0 +1,78 @@
+@* Week and day view: one column per day, a 24-hour minute scale, overlapping meetings side by side. *@
+<div class="ksc-grid-wrap" dir="rtl" lang="fa">
+    <div class="ksc-grid" style="--ksc-cols: @Days.Count">
+        <div class="ksc-grid-corner"></div>
+        @foreach (var day in Days)
+        {
+            <div class="ksc-grid-dayhead @(day == Today ? "is-today" : "")">
+                <button type="button" class="ksc-grid-daybtn" @onclick="() => OnDaySelected.InvokeAsync(day)">
+                    <span class="ksc-grid-weekday">@Calendar.WeekdayName(Calendar.GetWeekday(day))</span>
+                    <span class="ksc-grid-date">@PersianText.Digits(day.Day) @Calendar.MonthName(day.Month)</span>
+                </button>
+            </div>
+        }
+
+        <div class="ksc-grid-hours" aria-hidden="true">
+            @for (var hour = 0; hour < 24; hour++)
+            {
+                <div class="ksc-grid-hour">@PersianText.Time(new TimeOnly(hour, 0))</div>
+            }
+        </div>
+
+        @foreach (var day in Days)
+        {
+            <div class="ksc-grid-col @(day == Today ? "is-today" : "")" role="group" aria-label="@PersianText.FormatLong(day, Calendar)">
+                @for (var hour = 0; hour < 24; hour++)
+                {
+                    var slotHour = hour;
+                    <button type="button"
+                            class="ksc-grid-slot"
+                            aria-label="جلسه جدید @PersianText.FormatLong(day, Calendar) ساعت @PersianText.Time(new TimeOnly(slotHour, 0))"
+                            @onclick="() => SelectSlot(day, slotHour)"></button>
+                }
+                @foreach (var p in Layout.PlaceOn(Items, day))
+                {
+                    <button type="button"
+                            class="ksc-event @CalendarStatusText.CssClass(p.Item.Status) @(p.ContinuesBefore ? "continues-before" : "") @(p.ContinuesAfter ? "continues-after" : "")"
+                            style="@Style(p)"
+                            title="@p.Item.Title — @CalendarStatusText.Label(p.Item.Status)"
+                            @onclick="() => OnItemSelected.InvokeAsync(p.Item)">
+                        <span class="ksc-event-time">@PersianText.Time(Layout.TimeOf(p.Item.StartUtc)) – @PersianText.Time(Layout.TimeOf(p.Item.EndUtc))</span>
+                        <span class="ksc-event-title">@p.Item.Title</span>
+                        <span class="ksc-visually-hidden">(@CalendarStatusText.Label(p.Item.Status))</span>
+                    </button>
+                }
+            </div>
+        }
+    </div>
+</div>
+
+@code {
+    [Parameter, EditorRequired] public IReadOnlyList<JalaliDate> Days { get; set; } = [];
+
+    [Parameter, EditorRequired] public CalendarLayout Layout { get; set; } = default!;
+
+    [Parameter] public IReadOnlyList<CalendarItem> Items { get; set; } = [];
+
+    [Parameter] public JalaliDate? Today { get; set; }
+
+    [Parameter] public IKscJalaliCalendar Calendar { get; set; } = KscJalaliCalendarService.Instance;
+
+    [Parameter] public EventCallback<CalendarItem> OnItemSelected { get; set; }
+
+    [Parameter] public EventCallback<CalendarSlot> OnSlotSelected { get; set; }
+
+    [Parameter] public EventCallback<JalaliDate> OnDaySelected { get; set; }
+
+    private static string Style(PlacedItem p)
+    {
+        var top = p.StartMinute / (double)CalendarLayout.MinutesPerDay * 100;
+        var height = (p.EndMinute - p.StartMinute) / (double)CalendarLayout.MinutesPerDay * 100;
+        var width = 100.0 / p.LaneCount;
+        var offset = width * p.Lane;
+        return FormattableString.Invariant($"top:{top:0.####}%;height:{height:0.####}%;inline-size:{width:0.####}%;inset-inline-start:{offset:0.####}%");
+    }
+
+    private Task SelectSlot(JalaliDate day, int hour) =>
+        OnSlotSelected.InvokeAsync(Layout.SlotAt(day, new TimeOnly(hour, 0), TimeSpan.FromHours(1)));
+}

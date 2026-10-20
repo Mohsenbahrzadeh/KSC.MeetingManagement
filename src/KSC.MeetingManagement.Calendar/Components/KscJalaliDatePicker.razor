@@ -116,11 +116,9 @@
 
     [Parameter] public IKscJalaliCalendar Calendar { get; set; } = KscJalaliCalendarService.Instance;
 
-    [Inject] private TimeProvider Clock { get; set; } = TimeProvider.System;
-
     protected override void OnParametersSet()
     {
-        _today = Today ?? TehranClock.Today(Clock, Calendar);
+        _today = Today ?? TehranClock.Today(calendar: Calendar);
 
         if (!_initialised || Value != _syncedValue)
         {

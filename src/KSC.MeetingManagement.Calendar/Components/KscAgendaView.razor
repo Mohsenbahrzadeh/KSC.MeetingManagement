@@ -1,0 +1,47 @@
+@* Agenda: a plain list of meetings grouped by day. Designed for narrow screens, no horizontal scrolling. *@
+<div class="ksc-agenda" dir="rtl" lang="fa">
+    @{
+        var days = Layout.DaysOf(Range).Select(d => (Day: d, Items: Layout.ItemsOn(Items, d))).Where(g => g.Items.Count > 0).ToList();
+    }
+    @if (days.Count == 0)
+    {
+        <p class="ksc-empty" role="status">جلسه‌ای در این بازه نیست.</p>
+    }
+    else
+    {
+        @foreach (var group in days)
+        {
+            <section class="ksc-agenda-day @(group.Day == Today ? "is-today" : "")" aria-label="@PersianText.FormatLong(group.Day, Calendar)">
+                <h3 class="ksc-agenda-heading">
+                    @Calendar.WeekdayName(Calendar.GetWeekday(group.Day)) @PersianText.FormatLong(group.Day, Calendar)
+                </h3>
+                <ul class="ksc-agenda-list">
+                    @foreach (var item in group.Items)
+                    {
+                        <li>
+                            <button type="button" class="ksc-agenda-item @CalendarStatusText.CssClass(item.Status)" @onclick="() => OnItemSelected.InvokeAsync(item)">
+                                <span class="ksc-agenda-time">@PersianText.Time(Layout.TimeOf(item.StartUtc)) – @PersianText.Time(Layout.TimeOf(item.EndUtc))</span>
+                                <span class="ksc-agenda-title">@item.Title</span>
+                                <span class="ksc-agenda-status">@CalendarStatusText.Label(item.Status)</span>
+                            </button>
+                        </li>
+                    }
+                </ul>
+            </section>
+        }
+    }
+</div>
+
+@code {
+    [Parameter, EditorRequired] public JalaliRange Range { get; set; }
+
+    [Parameter, EditorRequired] public CalendarLayout Layout { get; set; } = default!;
+
+    [Parameter] public IReadOnlyList<CalendarItem> Items { get; set; } = [];
+
+    [Parameter] public JalaliDate? Today { get; set; }
+
+    [Parameter] public IKscJalaliCalendar Calendar { get; set; } = KscJalaliCalendarService.Instance;
+
+    [Parameter] public EventCallback<CalendarItem> OnItemSelected { get; set; }
+}
