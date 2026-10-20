@@ -1,0 +1,70 @@
+@* Month grid: whole Saturday-first weeks, meetings per local day, status shown as text and style. *@
+<div class="ksc-month" dir="rtl" lang="fa" role="grid" aria-label="@Title">
+    <div class="ksc-month-head" role="row">
+        @foreach (var weekday in Enum.GetValues<PersianWeekday>())
+        {
+            <div class="ksc-month-weekday" role="columnheader">@Calendar.WeekdayName(weekday)</div>
+        }
+    </div>
+    @foreach (var week in Calendar.MonthGrid(Anchor.Year, Anchor.Month))
+    {
+        <div class="ksc-month-week" role="row">
+            @foreach (var day in Layout.DaysOf(week))
+            {
+                var dayItems = Layout.ItemsOn(Items, day);
+                var shown = dayItems.Take(MaxChipsPerDay).ToList();
+                var hidden = dayItems.Count - shown.Count;
+                <div class="ksc-month-cell @(day.Month == Anchor.Month ? "" : "is-outside") @(day == Today ? "is-today" : "")"
+                     role="gridcell"
+                     aria-label="@(PersianText.FormatLong(day, Calendar)): @DayCountText(dayItems.Count)">
+                    <button type="button" class="ksc-month-daynum" aria-label="جلسه جدید در @PersianText.FormatLong(day, Calendar)" @onclick="() => SelectDay(day)">
+                        @(day.Day == 1 ? $"{PersianText.Digits(day.Day)} {Calendar.MonthName(day.Month)}" : PersianText.Digits(day.Day))
+                    </button>
+                    @foreach (var item in shown)
+                    {
+                        <button type="button"
+                                class="ksc-chip @CalendarStatusText.CssClass(item.Status)"
+                                title="@item.Title — @CalendarStatusText.Label(item.Status)"
+                                @onclick="() => OnItemSelected.InvokeAsync(item)">
+                            <span class="ksc-chip-time">@PersianText.Time(Layout.TimeOf(item.StartUtc))</span>
+                            <span class="ksc-chip-title">@item.Title</span>
+                            <span class="ksc-visually-hidden">(@CalendarStatusText.Label(item.Status))</span>
+                        </button>
+                    }
+                    @if (hidden > 0)
+                    {
+                        <button type="button" class="ksc-more" @onclick="() => OnDaySelected.InvokeAsync(day)">+@PersianText.Digits(hidden) بیشتر</button>
+                    }
+                </div>
+            }
+        </div>
+    }
+</div>
+
+@code {
+    public const int MaxChipsPerDay = 3;
+
+    [Parameter, EditorRequired] public JalaliDate Anchor { get; set; }
+
+    [Parameter, EditorRequired] public CalendarLayout Layout { get; set; } = default!;
+
+    [Parameter] public IReadOnlyList<CalendarItem> Items { get; set; } = [];
+
+    [Parameter] public JalaliDate? Today { get; set; }
+
+    [Parameter] public IKscJalaliCalendar Calendar { get; set; } = KscJalaliCalendarService.Instance;
+
+    [Parameter] public EventCallback<CalendarItem> OnItemSelected { get; set; }
+
+    /// <summary>Raised with a one-hour slot (09:00 local) when the user picks a day to create a meeting.</summary>
+    [Parameter] public EventCallback<CalendarSlot> OnSlotSelected { get; set; }
+
+    [Parameter] public EventCallback<JalaliDate> OnDaySelected { get; set; }
+
+    private string Title => $"{Calendar.MonthName(Anchor.Month)} {PersianText.Digits(Anchor.Year)}";
+
+    private static string DayCountText(int count) => count == 0 ? "بدون جلسه" : $"{PersianText.Digits(count)} جلسه";
+
+    private Task SelectDay(JalaliDate day) =>
+        OnSlotSelected.InvokeAsync(Layout.SlotAt(day, new TimeOnly(9, 0), TimeSpan.FromHours(1)));
+}

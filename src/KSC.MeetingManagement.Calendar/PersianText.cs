@@ -23,6 +23,9 @@ public static class PersianText
 
     public static string Digits(int number) => Digits(number.ToString(CultureInfo.InvariantCulture));
 
+    /// <summary>"۰۹:۳۰"</summary>
+    public static string Time(TimeOnly time) => Digits(time.ToString("HH:mm", CultureInfo.InvariantCulture));
+
     /// <summary>"۱۴۰۴/۰۱/۰۱"</summary>
     public static string Format(JalaliDate date) => Digits(date.ToString());
 
@@ -32,6 +35,22 @@ public static class PersianText
         ArgumentNullException.ThrowIfNull(calendar);
         return $"{Digits(date.Day)} {calendar.MonthName(date.Month)} {Digits(date.Year)}";
     }
+}
+
+public static class CalendarStatusText
+{
+    public static string Label(CalendarItemStatus status) => status switch
+    {
+        CalendarItemStatus.Draft => "پیش‌نویس",
+        CalendarItemStatus.Scheduled => "برنامه‌ریزی‌شده",
+        CalendarItemStatus.InProgress => "در حال برگزاری",
+        CalendarItemStatus.Completed => "پایان‌یافته",
+        CalendarItemStatus.Cancelled => "لغوشده",
+        CalendarItemStatus.Postponed => "به‌تعویق‌افتاده",
+        _ => status.ToString(),
+    };
+
+    public static string CssClass(CalendarItemStatus status) => "status-" + status.ToString().ToLowerInvariant();
 }
 
 /// <summary>Today's date in the organisation's time zone (Iran by default), independent of the server's zone.</summary>

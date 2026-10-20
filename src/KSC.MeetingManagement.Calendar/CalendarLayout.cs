@@ -30,6 +30,14 @@ public sealed class CalendarLayout(IKscJalaliCalendar calendar, TimeZoneInfo tim
     public (DateTimeOffset FromUtc, DateTimeOffset ToUtc) UtcWindow(JalaliRange range) =>
         (calendar.DayBoundsUtc(range.Start, TimeZone).StartUtc, calendar.DayBoundsUtc(range.End, TimeZone).EndUtc);
 
+    /// <summary>Every day of the range, in order.</summary>
+    public IReadOnlyList<JalaliDate> DaysOf(JalaliRange range)
+    {
+        var first = calendar.ToGregorian(range.Start);
+        var count = calendar.ToGregorian(range.End).DayNumber - first.DayNumber + 1;
+        return Enumerable.Range(0, count).Select(i => calendar.FromGregorian(first.AddDays(i))).ToList();
+    }
+
     /// <summary>Local calendar day of an instant in the display zone.</summary>
     public JalaliDate DayOf(DateTimeOffset instantUtc) =>
         calendar.FromGregorian(DateOnly.FromDateTime(TimeZoneInfo.ConvertTime(instantUtc, TimeZone).DateTime));

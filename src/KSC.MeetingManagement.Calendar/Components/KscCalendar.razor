@@ -1,0 +1,171 @@
+@implements IDisposable
+@* Calendar container: toolbar, status filter, loading of exactly the visible window, and the four views. *@
+<div class="ksc-calendar" dir="rtl" lang="fa" aria-busy="@(_loading ? "true" : "false")">
+    <KscCalendarToolbar View="View" ViewChanged="OnViewChanged" Today="@_today" Calendar="Calendar" />
+
+    <div class="ksc-filter">
+        <label for="@_filterId">وضعیت</label>
+        <select id="@_filterId" class="ksc-filter-select" @onchange="OnFilterChanged">
+            <option value="">همه</option>
+            @foreach (var status in Enum.GetValues<CalendarItemStatus>())
+            {
+                <option value="@((int)status)" selected="@(_filter.Status == status)">@CalendarStatusText.Label(status)</option>
+            }
+        </select>
+    </div>
+
+    @if (_error is not null)
+    {
+        <div class="ksc-error" role="alert">
+            <span>@_error</span>
+            <button type="button" class="ksc-btn ksc-retry" @onclick="RefreshAsync">تلاش دوباره</button>
+        </div>
+    }
+    else if (_loading)
+    {
+        <p class="ksc-loading" role="status">در حال بارگیری جلسات…</p>
+    }
+    else if (_items.Count == 0 && View.Mode != CalendarViewMode.Agenda)
+    {
+        <p class="ksc-empty" role="status">جلسه‌ای در این بازه نیست.</p>
+    }
+
+    @switch (View.Mode)
+    {
+        case CalendarViewMode.Month:
+            <KscMonthView Anchor="View.Anchor" Layout="_layout" Items="_items" Today="@_today" Calendar="Calendar"
+                          OnItemSelected="OnItemSelected" OnSlotSelected="OnSlotSelected" OnDaySelected="OpenDay" />
+            break;
+        case CalendarViewMode.Week:
+        case CalendarViewMode.Day:
+            <KscTimeGridView Days="_layout.DaysOf(_navigator.VisibleRange(View))" Layout="_layout" Items="_items" Today="@_today" Calendar="Calendar"
+                             OnItemSelected="OnItemSelected" OnSlotSelected="OnSlotSelected" OnDaySelected="OpenDay" />
+            break;
+        default:
+            <KscAgendaView Range="_navigator.VisibleRange(View)" Layout="_layout" Items="_items" Today="@_today" Calendar="Calendar"
+                           OnItemSelected="OnItemSelected" />
+            break;
+    }
+</div>
+
+@code {
+    private static int _nextId;
+
+    private readonly string _filterId = "ksc-filter-" + Interlocked.Increment(ref _nextId);
+    private CancellationTokenSource? _cts;
+    private CalendarNavigator _navigator = new();
+    private CalendarLayout _layout = new(TehranClock.TimeZone);
+    private IReadOnlyList<CalendarItem> _items = [];
+    private CalendarFilter _filter = new();
+    private JalaliDate _today;
+    private bool _loading;
+    private string? _error;
+    private CalendarView? _loadedView;
+    private IMeetingCalendarDataProvider? _loadedProvider;
+
+    [Parameter, EditorRequired] public CalendarView View { get; set; }
+
+    [Parameter] public EventCallback<CalendarView> ViewChanged { get; set; }
+
+    [Parameter, EditorRequired] public IMeetingCalendarDataProvider Provider { get; set; } = default!;
+
+    /// <summary>Zone used to decide which day a meeting belongs to; defaults to Iran time.</summary>
+    [Parameter] public TimeZoneInfo? TimeZone { get; set; }
+
+    [Parameter] public JalaliDate? Today { get; set; }
+
+    [Parameter] public IKscJalaliCalendar Calendar { get; set; } = KscJalaliCalendarService.Instance;
+
+    [Parameter] public EventCallback<CalendarItem> OnItemSelected { get; set; }
+
+    /// <summary>A slot the user picked for a new meeting (UTC instants, already converted from local time).</summary>
+    [Parameter] public EventCallback<CalendarSlot> OnSlotSelected { get; set; }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        _navigator = new CalendarNavigator(Calendar);
+        _layout = new CalendarLayout(Calendar, TimeZone ?? TehranClock.TimeZone);
+        _today = Today ?? TehranClock.Today(calendar: Calendar);
+
+        if (_loadedView != View || !ReferenceEquals(_loadedProvider, Provider))
+        {
+            await LoadAsync();
+        }
+    }
+
+    /// <summary>Reloads the visible window, for example after a meeting was created or moved.</summary>
+    public Task RefreshAsync() => LoadAsync();
+
+    private async Task OnViewChanged(CalendarView next)
+    {
+        View = next;
+        await ViewChanged.InvokeAsync(next);
+        if (_loadedView != next)
+        {
+            await LoadAsync();
+        }
+    }
+
+    private Task OpenDay(JalaliDate day) => OnViewChanged(new CalendarView(CalendarViewMode.Day, day));
+
+    private async Task OnFilterChanged(ChangeEventArgs args)
+    {
+        _filter = int.TryParse(args.Value?.ToString(), out var value) && Enum.IsDefined((CalendarItemStatus)value)
+            ? new CalendarFilter((CalendarItemStatus)value)
+            : new CalendarFilter();
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        _cts?.Cancel();
+        _cts?.Dispose();
+        var cts = _cts = new CancellationTokenSource();
+
+        var view = View;
+        _loadedView = view;
+        _loadedProvider = Provider;
+        _loading = true;
+        _error = null;
+
+        try
+        {
+            var (from, to) = _layout.UtcWindow(_navigator.VisibleRange(view));
+            var items = await Provider.GetItemsAsync(from, to, _filter, cts.Token);
+            if (cts.IsCancellationRequested)
+            {
+                return;
+            }
+
+            // Defence in depth: keep only what overlaps the requested window even if a provider over-delivers.
+            _items = items.Where(i => i.StartUtc < to && i.EndUtc >= from).ToList();
+        }
+        catch (OperationCanceledException)
+        {
+            return;
+        }
+        catch (Exception)
+        {
+            if (cts.IsCancellationRequested)
+            {
+                return;
+            }
+
+            _items = [];
+            _error = "بارگیری جلسات ناموفق بود.";
+        }
+        finally
+        {
+            if (!cts.IsCancellationRequested)
+            {
+                _loading = false;
+            }
+        }
+    }
+
+    public void Dispose()
+    {
+        _cts?.Cancel();
+        _cts?.Dispose();
+    }
+}
