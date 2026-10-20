@@ -10,6 +10,8 @@ public sealed class KscDbContext(DbContextOptions<KscDbContext> options, ITenant
 {
     public DbSet<Meeting> Meetings => Set<Meeting>();
 
+    public DbSet<ChatMessage> ChatMessages => Set<ChatMessage>();
+
     public DbSet<PresenceRecord> PresenceRecords => Set<PresenceRecord>();
 
     public DbSet<ProcessedMediaEvent> ProcessedMediaEvents => Set<ProcessedMediaEvent>();
@@ -63,6 +65,23 @@ public sealed class KscDbContext(DbContextOptions<KscDbContext> options, ITenant
             b.HasIndex(m => new { m.TenantId, m.Status });
 
             // Defence in depth: tenant filtering never replaces authorization checks.
+            b.HasQueryFilter(m => m.TenantId == CurrentTenantId);
+        });
+
+        modelBuilder.Entity<ChatMessage>(b =>
+        {
+            b.ToTable("chat_messages");
+            b.HasKey(m => m.Id);
+            b.Property(m => m.TenantId).IsRequired();
+            b.Property(m => m.MeetingId).IsRequired();
+            b.Property(m => m.Sequence);
+            b.Property(m => m.SenderUserId);
+            b.Property(m => m.Text).HasMaxLength(ChatMessage.MaxTextLength).IsRequired();
+            b.Property(m => m.SentAtUtc);
+            b.Property(m => m.Status).HasConversion<string>().HasMaxLength(20);
+            b.Property(m => m.DeletedByUserId);
+            b.Property(m => m.DeletedAtUtc);
+            b.HasIndex(m => new { m.TenantId, m.MeetingId, m.Sequence }).IsUnique();
             b.HasQueryFilter(m => m.TenantId == CurrentTenantId);
         });
 
