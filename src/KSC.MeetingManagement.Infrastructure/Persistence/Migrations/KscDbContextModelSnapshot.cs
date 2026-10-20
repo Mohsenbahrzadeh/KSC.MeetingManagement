@@ -285,6 +285,109 @@ namespace KSC.MeetingManagement.Infrastructure.Persistence.Migrations
                     b.ToTable("meeting_participants", (string)null);
                 });
 
+            modelBuilder.Entity("KSC.MeetingManagement.Domain.Meetings.Minutes", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<int?>("ApprovedVersionNumber")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("CurrentVersionNumber")
+                        .HasColumnType("integer");
+
+                    b.Property<long>("LockVersion")
+                        .IsConcurrencyToken()
+                        .HasColumnType("bigint");
+
+                    b.Property<Guid>("MeetingId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId", "MeetingId")
+                        .IsUnique();
+
+                    b.ToTable("minutes", (string)null);
+                });
+
+            modelBuilder.Entity("KSC.MeetingManagement.Domain.Meetings.MinutesTransition", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("ActorUserId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset>("AtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Comment")
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)");
+
+                    b.Property<string>("From")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<Guid>("MinutesId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("To")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<int>("VersionNumber")
+                        .HasColumnType("integer");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("MinutesId");
+
+                    b.ToTable("minutes_transitions", (string)null);
+                });
+
+            modelBuilder.Entity("KSC.MeetingManagement.Domain.Meetings.MinutesVersion", b =>
+                {
+                    b.Property<Guid>("MinutesId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("Number")
+                        .HasColumnType("integer");
+
+                    b.Property<Guid>("AuthorUserId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Content")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<DateTimeOffset>("CreatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("MinutesId", "Number");
+
+                    b.ToTable("minutes_versions", (string)null);
+                });
+
             modelBuilder.Entity("KSC.MeetingManagement.Domain.Meetings.CommitteeMember", b =>
                 {
                     b.HasOne("KSC.MeetingManagement.Domain.Meetings.Committee", null)
@@ -294,9 +397,34 @@ namespace KSC.MeetingManagement.Infrastructure.Persistence.Migrations
                         .IsRequired();
                 });
 
+            modelBuilder.Entity("KSC.MeetingManagement.Domain.Meetings.MinutesTransition", b =>
+                {
+                    b.HasOne("KSC.MeetingManagement.Domain.Meetings.Minutes", null)
+                        .WithMany("Transitions")
+                        .HasForeignKey("MinutesId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("KSC.MeetingManagement.Domain.Meetings.MinutesVersion", b =>
+                {
+                    b.HasOne("KSC.MeetingManagement.Domain.Meetings.Minutes", null)
+                        .WithMany("Versions")
+                        .HasForeignKey("MinutesId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("KSC.MeetingManagement.Domain.Meetings.Committee", b =>
                 {
                     b.Navigation("Members");
+                });
+
+            modelBuilder.Entity("KSC.MeetingManagement.Domain.Meetings.Minutes", b =>
+                {
+                    b.Navigation("Transitions");
+
+                    b.Navigation("Versions");
                 });
 #pragma warning restore 612, 618
         }

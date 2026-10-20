@@ -8,6 +8,8 @@ public sealed class KscDbContext(DbContextOptions<KscDbContext> options, ITenant
 {
     public DbSet<Meeting> Meetings => Set<Meeting>();
 
+    public DbSet<Minutes> Minutes => Set<Minutes>();
+
     public DbSet<AgendaItem> AgendaItems => Set<AgendaItem>();
 
     public DbSet<MeetingAttachment> Attachments => Set<MeetingAttachment>();
@@ -45,6 +47,51 @@ public sealed class KscDbContext(DbContextOptions<KscDbContext> options, ITenant
 
             // Defence in depth: tenant filtering never replaces authorization checks.
             b.HasQueryFilter(m => m.TenantId == CurrentTenantId);
+        });
+
+        modelBuilder.Entity<Minutes>(b =>
+        {
+            b.ToTable("minutes");
+            b.HasKey(m => m.Id);
+            b.Property(m => m.TenantId).IsRequired();
+            b.Property(m => m.MeetingId).IsRequired();
+            b.Property(m => m.Status).HasConversion<string>().HasMaxLength(20);
+            b.Property(m => m.LockVersion).IsConcurrencyToken();
+            b.Ignore(m => m.CurrentVersion);
+            b.HasIndex(m => new { m.TenantId, m.MeetingId }).IsUnique();
+            b.HasMany(m => m.Versions).WithOne().HasForeignKey(v => v.MinutesId).OnDelete(DeleteBehavior.Cascade);
+            b.HasMany(m => m.Transitions).WithOne().HasForeignKey(t => t.MinutesId).OnDelete(DeleteBehavior.Cascade);
+            b.Navigation(m => m.Versions).UsePropertyAccessMode(PropertyAccessMode.Field);
+            b.Navigation(m => m.Transitions).UsePropertyAccessMode(PropertyAccessMode.Field);
+            b.HasQueryFilter(m => m.TenantId == CurrentTenantId);
+        });
+
+        modelBuilder.Entity<MinutesVersion>(b =>
+        {
+            b.ToTable("minutes_versions");
+            b.HasKey(v => new { v.MinutesId, v.Number });
+            b.Property(v => v.TenantId).IsRequired();
+            b.Property(v => v.Content).IsRequired();
+            b.Property(v => v.AuthorUserId);
+            b.Property(v => v.CreatedAtUtc);
+            b.HasQueryFilter(v => v.TenantId == CurrentTenantId);
+        });
+
+        modelBuilder.Entity<MinutesTransition>(b =>
+        {
+            b.ToTable("minutes_transitions");
+            b.HasKey(t => t.Id);
+
+            // Ids are created by the application; without this EF treats a child added to a loaded parent as existing and tries to UPDATE it.
+            b.Property(t => t.Id).ValueGeneratedNever();
+            b.Property(t => t.TenantId).IsRequired();
+            b.Property(t => t.From).HasConversion<string>().HasMaxLength(20);
+            b.Property(t => t.To).HasConversion<string>().HasMaxLength(20);
+            b.Property(t => t.Comment).HasMaxLength(Domain.Meetings.Minutes.MaxCommentLength);
+            b.Property(t => t.VersionNumber);
+            b.Property(t => t.ActorUserId);
+            b.Property(t => t.AtUtc);
+            b.HasQueryFilter(t => t.TenantId == CurrentTenantId);
         });
 
         modelBuilder.Entity<AgendaItem>(b =>
