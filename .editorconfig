@@ -17,3 +17,7 @@ csharp_style_var_for_built_in_types = true:suggestion
 
 [tests/**.cs]
 dotnet_diagnostic.CA1707.severity = none
+
+[**/Persistence/Migrations/*.cs]
+generated_code = true
+dotnet_analyzer_diagnostic.severity = none

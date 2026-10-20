@@ -3,6 +3,7 @@ using KSC.MeetingManagement.Api.Observability;
 using KSC.MeetingManagement.Api.Tenancy;
 using KSC.MeetingManagement.Application.Identity;
 using KSC.MeetingManagement.Application.Tenants;
+using KSC.MeetingManagement.Infrastructure.Persistence;
 using KSC.MeetingManagement.Infrastructure.Tenants;
 using Microsoft.AspNetCore.Authorization;
 
@@ -11,7 +12,8 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Logging.ClearProviders();
 builder.Logging.AddJsonConsole(o => o.IncludeScopes = true);
 
-builder.Services.AddControllers();
+builder.Services.AddControllers()
+    .AddJsonOptions(o => o.JsonSerializerOptions.Converters.Add(new System.Text.Json.Serialization.JsonStringEnumConverter()));
 builder.Services.AddOpenApi();
 builder.Services.AddProblemDetails();
 builder.Services.AddExceptionHandler<ApiExceptionHandler>();
@@ -24,6 +26,9 @@ builder.Services.AddSingleton<ITenantStore>(sp => sp.GetRequiredService<InMemory
 
 builder.Services.AddSingleton<InMemoryMembershipStore>();
 builder.Services.AddSingleton<IMembershipStore>(sp => sp.GetRequiredService<InMemoryMembershipStore>());
+builder.Services.AddHttpContextAccessor();
+builder.Services.AddScoped<ICurrentUser, HttpCurrentUser>();
+builder.Services.AddKscPersistence(builder.Configuration);
 builder.Services.AddAuthentication();
 builder.Services.AddAuthorization();
 builder.Services.AddSingleton<IAuthorizationPolicyProvider, PermissionPolicyProvider>();
