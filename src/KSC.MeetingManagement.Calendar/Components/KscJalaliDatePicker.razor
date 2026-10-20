@@ -1,0 +1,269 @@
+@* Jalali date picker: typed input with validation plus a month popup. RTL, Persian digits, Saturday-first weeks. *@
+<div class="ksc-datepicker" dir="rtl" lang="fa" @onkeydown="OnKeyDown">
+    @if (!string.IsNullOrEmpty(Label))
+    {
+        <label class="ksc-datepicker-label" for="@_inputId">@Label</label>
+    }
+    <div class="ksc-datepicker-field">
+        <input id="@_inputId"
+               class="ksc-datepicker-input @(_error is null ? "" : "is-invalid")"
+               type="text"
+               inputmode="numeric"
+               autocomplete="off"
+               dir="ltr"
+               placeholder="@PersianText.Format(JalaliDate.Create(1404, 1, 1))"
+               value="@_text"
+               disabled="@Disabled"
+               aria-invalid="@(_error is null ? null : "true")"
+               aria-describedby="@(_error is null ? null : _errorId)"
+               @onchange="OnInputChanged" />
+        <button type="button"
+                class="ksc-datepicker-toggle"
+                aria-label="انتخاب تاریخ"
+                aria-haspopup="dialog"
+                aria-expanded="@(_open ? "true" : "false")"
+                disabled="@Disabled"
+                @onclick="Toggle">
+            <span aria-hidden="true">▾</span>
+        </button>
+    </div>
+    @if (_error is not null)
+    {
+        <div class="ksc-datepicker-error" id="@_errorId" role="alert">@_error</div>
+    }
+    @if (_open)
+    {
+        <div class="ksc-datepicker-popup" role="dialog" aria-label="تقویم">
+            <div class="ksc-datepicker-head">
+                <button type="button" class="ksc-datepicker-nav" aria-label="سال قبل" disabled="@(!CanShow(_viewYear - 1))" @onclick="() => MoveMonth(-12)">«</button>
+                <button type="button" class="ksc-datepicker-nav" aria-label="ماه قبل" disabled="@(!CanShow(_viewYear, _viewMonth - 1))" @onclick="() => MoveMonth(-1)">›</button>
+                <span class="ksc-datepicker-title" aria-live="polite">@Calendar.MonthName(_viewMonth) @PersianText.Digits(_viewYear)</span>
+                <button type="button" class="ksc-datepicker-nav" aria-label="ماه بعد" disabled="@(!CanShow(_viewYear, _viewMonth + 1))" @onclick="() => MoveMonth(1)">‹</button>
+                <button type="button" class="ksc-datepicker-nav" aria-label="سال بعد" disabled="@(!CanShow(_viewYear + 1))" @onclick="() => MoveMonth(12)">»</button>
+            </div>
+            <table class="ksc-datepicker-grid" role="grid">
+                <thead>
+                    <tr>
+                        @foreach (var weekday in Enum.GetValues<PersianWeekday>())
+                        {
+                            <th scope="col" title="@Calendar.WeekdayName(weekday)">@Calendar.WeekdayName(weekday)[..1]</th>
+                        }
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var week in Calendar.MonthGrid(_viewYear, _viewMonth))
+                    {
+                        <tr>
+                            @foreach (var day in Days(week))
+                            {
+                                var inMonth = day.Month == _viewMonth;
+                                var allowed = IsAllowed(day);
+                                <td>
+                                    <button type="button"
+                                            class="ksc-datepicker-day @(inMonth ? "" : "is-outside") @(day == Value ? "is-selected" : "") @(day == _today ? "is-today" : "")"
+                                            disabled="@(!allowed)"
+                                            aria-label="@PersianText.FormatLong(day, Calendar)"
+                                            aria-pressed="@(day == Value ? "true" : "false")"
+                                            aria-current="@(day == _today ? "date" : null)"
+                                            @onclick="() => Pick(day)">@PersianText.Digits(day.Day)</button>
+                                </td>
+                            }
+                        </tr>
+                    }
+                </tbody>
+            </table>
+            <div class="ksc-datepicker-foot">
+                <button type="button" class="ksc-datepicker-today" disabled="@(!IsAllowed(_today))" @onclick="() => Pick(_today)">امروز</button>
+                @if (!Required)
+                {
+                    <button type="button" class="ksc-datepicker-clear" @onclick="Clear">پاک کردن</button>
+                }
+            </div>
+        </div>
+    }
+</div>
+
+@code {
+    private static int _nextId;
+
+    private readonly string _inputId = "ksc-dp-" + Interlocked.Increment(ref _nextId);
+    private string _errorId => _inputId + "-error";
+    private string _text = string.Empty;
+    private string? _error;
+    private bool _open;
+    private int _viewYear;
+    private int _viewMonth;
+    private JalaliDate _today;
+    private JalaliDate? _syncedValue;
+    private bool _initialised;
+
+    [Parameter] public JalaliDate? Value { get; set; }
+
+    [Parameter] public EventCallback<JalaliDate?> ValueChanged { get; set; }
+
+    [Parameter] public JalaliDate? Min { get; set; }
+
+    [Parameter] public JalaliDate? Max { get; set; }
+
+    [Parameter] public string? Label { get; set; }
+
+    [Parameter] public bool Required { get; set; }
+
+    [Parameter] public bool Disabled { get; set; }
+
+    /// <summary>Overrides "today" (tests, or a tenant clock).</summary>
+    [Parameter] public JalaliDate? Today { get; set; }
+
+    [Parameter] public IKscJalaliCalendar Calendar { get; set; } = KscJalaliCalendarService.Instance;
+
+    [Inject] private TimeProvider Clock { get; set; } = TimeProvider.System;
+
+    protected override void OnParametersSet()
+    {
+        _today = Today ?? TehranClock.Today(Clock, Calendar);
+
+        if (!_initialised || Value != _syncedValue)
+        {
+            _text = Value is { } v ? PersianText.Format(v) : string.Empty;
+            _syncedValue = Value;
+            if (Value is not null)
+            {
+                _error = null;
+            }
+
+            if (!_initialised || !_open)
+            {
+                var focus = Value ?? _today;
+                _viewYear = focus.Year;
+                _viewMonth = focus.Month;
+            }
+
+            _initialised = true;
+        }
+    }
+
+    private async Task OnInputChanged(ChangeEventArgs args)
+    {
+        var raw = args.Value?.ToString() ?? string.Empty;
+        _text = raw;
+
+        if (string.IsNullOrWhiteSpace(raw))
+        {
+            if (Required)
+            {
+                _error = "تاریخ الزامی است.";
+                return;
+            }
+
+            _error = null;
+            await SetValue(null);
+            return;
+        }
+
+        if (!JalaliDate.TryParse(raw, out var parsed))
+        {
+            _error = "تاریخ نامعتبر است. قالب صحیح: " + PersianText.Format(JalaliDate.Create(1404, 1, 1));
+            return;
+        }
+
+        if (!IsAllowed(parsed))
+        {
+            _error = RangeMessage();
+            return;
+        }
+
+        _error = null;
+        _text = PersianText.Format(parsed);
+        await SetValue(parsed);
+    }
+
+    private async Task Pick(JalaliDate day)
+    {
+        if (!IsAllowed(day))
+        {
+            return;
+        }
+
+        _error = null;
+        _open = false;
+        _text = PersianText.Format(day);
+        await SetValue(day);
+    }
+
+    private async Task Clear()
+    {
+        _error = null;
+        _open = false;
+        _text = string.Empty;
+        await SetValue(null);
+    }
+
+    private async Task SetValue(JalaliDate? value)
+    {
+        Value = value;
+        _syncedValue = value;
+        if (value is { } v)
+        {
+            _viewYear = v.Year;
+            _viewMonth = v.Month;
+        }
+
+        await ValueChanged.InvokeAsync(value);
+    }
+
+    private void Toggle()
+    {
+        _open = !_open;
+        if (_open)
+        {
+            var focus = Value ?? _today;
+            _viewYear = focus.Year;
+            _viewMonth = focus.Month;
+        }
+    }
+
+    private void OnKeyDown(KeyboardEventArgs args)
+    {
+        if (args.Key == "Escape")
+        {
+            _open = false;
+        }
+    }
+
+    private void MoveMonth(int delta)
+    {
+        var index = (_viewYear * 12) + (_viewMonth - 1) + delta;
+        var year = index / 12;
+        if (CanShow(year))
+        {
+            _viewYear = year;
+            _viewMonth = (index % 12) + 1;
+        }
+    }
+
+    private static bool CanShow(int year, int month = 1)
+    {
+        var y = year + ((month - 1) / 12) - (month < 1 ? 1 : 0);
+        return y > JalaliDate.MinYear && y < JalaliDate.MaxYear;
+    }
+
+    private IEnumerable<JalaliDate> Days(JalaliRange week)
+    {
+        var first = Calendar.ToGregorian(week.Start);
+        for (var i = 0; i < 7; i++)
+        {
+            yield return Calendar.FromGregorian(first.AddDays(i));
+        }
+    }
+
+    private bool IsAllowed(JalaliDate day) =>
+        (Min is null || day >= Min) && (Max is null || day <= Max);
+
+    private string RangeMessage() => (Min, Max) switch
+    {
+        ({ } lo, { } hi) => $"تاریخ باید بین {PersianText.Format(lo)} و {PersianText.Format(hi)} باشد.",
+        ({ } lo, null) => $"تاریخ نمی‌تواند قبل از {PersianText.Format(lo)} باشد.",
+        (null, { } hi) => $"تاریخ نمی‌تواند بعد از {PersianText.Format(hi)} باشد.",
+        _ => "تاریخ مجاز نیست.",
+    };
+}
