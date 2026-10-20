@@ -2,6 +2,7 @@ using KSC.MeetingManagement.Application.Media;
 using KSC.MeetingManagement.Application.Meetings;
 using KSC.MeetingManagement.Application.Reports;
 using KSC.MeetingManagement.Infrastructure.Media;
+using KSC.MeetingManagement.Infrastructure.Notifications;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -75,6 +76,7 @@ public static class PersistenceExtensions
             configuration["Storage:Root"] ?? Path.Combine(AppContext.BaseDirectory, "App_Data", "files")));
         services.AddScoped<AttachmentService>();
         services.AddKscMedia(configuration);
+        services.AddKscNotifications(configuration);
         services.AddScoped<EfAuditLog>();
         services.AddScoped<IAuditLog>(sp => sp.GetRequiredService<EfAuditLog>());
         services.AddScoped<IAuditQuery>(sp => sp.GetRequiredService<EfAuditLog>());

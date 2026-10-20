@@ -16,6 +16,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\KSC.MeetingManagement.Application\KSC.MeetingManagement.Application.csproj" />
+    <ProjectReference Include="..\KSC.MeetingManagement.Calendar\KSC.MeetingManagement.Calendar.csproj" />
     <ProjectReference Include="..\KSC.MeetingManagement.Infrastructure\KSC.MeetingManagement.Infrastructure.csproj" />
   </ItemGroup>
 
