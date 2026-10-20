@@ -2,6 +2,8 @@ using KSC.MeetingManagement.Application.Meetings;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
+using KSC.MeetingManagement.Application.Participants;
 
 namespace KSC.MeetingManagement.Infrastructure.Persistence;
 
@@ -21,6 +23,9 @@ public static class PersistenceExtensions
 
         services.AddScoped<IMeetingRepository, EfMeetingRepository>();
         services.AddScoped<MeetingService>();
+        services.TryAddSingleton(TimeProvider.System);
+        services.AddScoped<IParticipantRepository, EfParticipantRepository>();
+        services.AddScoped<ParticipantService>();
         return services;
     }
 }

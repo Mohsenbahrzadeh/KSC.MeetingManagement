@@ -8,6 +8,8 @@ public sealed class KscDbContext(DbContextOptions<KscDbContext> options, ITenant
 {
     public DbSet<Meeting> Meetings => Set<Meeting>();
 
+    public DbSet<MeetingParticipant> Participants => Set<MeetingParticipant>();
+
     // Evaluated per context instance. Guid.Empty (no tenant resolved) matches nothing.
     private Guid CurrentTenantId => tenant.Tenant?.Id ?? Guid.Empty;
 
@@ -32,6 +34,21 @@ public sealed class KscDbContext(DbContextOptions<KscDbContext> options, ITenant
 
             // Defence in depth: tenant filtering never replaces authorization checks.
             b.HasQueryFilter(m => m.TenantId == CurrentTenantId);
+        });
+
+        modelBuilder.Entity<MeetingParticipant>(b =>
+        {
+            b.ToTable("meeting_participants");
+            b.HasKey(p => p.Id);
+            b.Property(p => p.TenantId).IsRequired();
+            b.Property(p => p.MeetingId).IsRequired();
+            b.Property(p => p.Kind).HasConversion<string>().HasMaxLength(20);
+            b.Property(p => p.Status).HasConversion<string>().HasMaxLength(20);
+            b.Property(p => p.GuestName).HasMaxLength(200);
+            b.Property(p => p.GuestEmail).HasMaxLength(320);
+            b.Property(p => p.InviteTokenHash).HasMaxLength(64);
+            b.HasIndex(p => new { p.TenantId, p.MeetingId });
+            b.HasQueryFilter(p => p.TenantId == CurrentTenantId);
         });
     }
 }
