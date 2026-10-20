@@ -38,11 +38,19 @@ public static class PersistenceExtensions
             TokenLifetimeMinutes = IntOr(configuration["Media:TokenLifetimeMinutes"], 10),
             JoinOpensMinutesBeforeStart = IntOr(configuration["Media:JoinOpensMinutesBeforeStart"], 15),
             JoinClosesMinutesAfterEnd = IntOr(configuration["Media:JoinClosesMinutesAfterEnd"], 120),
+            LobbyForGuests = !string.Equals(configuration["Media:LobbyForGuests"], "false", StringComparison.OrdinalIgnoreCase),
+            LobbyForMembers = string.Equals(configuration["Media:LobbyForMembers"], "true", StringComparison.OrdinalIgnoreCase),
+            ApiUrl = configuration["Media:ApiUrl"],
         };
 
         services.TryAddSingleton(options);
         services.TryAddSingleton<IMediaTokenService>(sp => new LiveKitTokenService(sp.GetRequiredService<MediaOptions>(), sp.GetRequiredService<TimeProvider>()));
+        services.AddScoped<IRoomEntryRepository, EfRoomEntryRepository>();
         services.AddScoped<MediaAccessService>();
+        services.AddScoped<RoomControlService>();
+        services.TryAddSingleton<IMediaRoomControl>(sp => sp.GetRequiredService<MediaOptions>().IsComplete
+            ? new LiveKitRoomControl(new HttpClient { Timeout = TimeSpan.FromSeconds(5) }, sp.GetRequiredService<MediaOptions>(), sp.GetRequiredService<TimeProvider>())
+            : new NoMediaRoomControl());
         return services;
     }
 

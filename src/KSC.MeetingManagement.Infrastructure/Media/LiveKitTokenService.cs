@@ -5,6 +5,22 @@ using KSC.MeetingManagement.Application.Media;
 
 namespace KSC.MeetingManagement.Infrastructure.Media;
 
+/// <summary>HS256 JWT signing shared by participant tokens and server API tokens.</summary>
+internal static class LiveKitJwt
+{
+    public static string Sign(string secret, IReadOnlyDictionary<string, object?> payload)
+    {
+        var header = Base64Url(JsonSerializer.SerializeToUtf8Bytes(new Dictionary<string, string> { ["alg"] = "HS256", ["typ"] = "JWT" }));
+        var body = Base64Url(JsonSerializer.SerializeToUtf8Bytes(payload));
+        var signingInput = $"{header}.{body}";
+        var signature = HMACSHA256.HashData(Encoding.UTF8.GetBytes(secret), Encoding.ASCII.GetBytes(signingInput));
+        return $"{signingInput}.{Base64Url(signature)}";
+    }
+
+    public static string Base64Url(byte[] bytes) =>
+        Convert.ToBase64String(bytes).TrimEnd('=').Replace('+', '-').Replace('/', '_');
+}
+
 /// <summary>
 /// Signs LiveKit access tokens (HS256 JWT with a "video" grant). Tokens are short-lived and bound to one room and one identity.
 /// </summary>
@@ -80,17 +96,7 @@ public sealed class LiveKitTokenService(MediaOptions options, TimeProvider clock
         return grant;
     }
 
-    private string Sign(Dictionary<string, object?> payload)
-    {
-        var header = Base64Url(JsonSerializer.SerializeToUtf8Bytes(new Dictionary<string, string> { ["alg"] = "HS256", ["typ"] = "JWT" }));
-        var body = Base64Url(JsonSerializer.SerializeToUtf8Bytes(payload));
-        var signingInput = $"{header}.{body}";
-        var signature = HMACSHA256.HashData(Encoding.UTF8.GetBytes(options.ApiSecret!), Encoding.ASCII.GetBytes(signingInput));
-        return $"{signingInput}.{Base64Url(signature)}";
-    }
-
-    private static string Base64Url(byte[] bytes) =>
-        Convert.ToBase64String(bytes).TrimEnd('=').Replace('+', '-').Replace('/', '_');
+    private string Sign(Dictionary<string, object?> payload) => LiveKitJwt.Sign(options.ApiSecret!, payload);
 
     private static void RequireToken(string value, string name, int maxLength)
     {

@@ -55,6 +55,8 @@ public sealed class RoomApiTests : IClassFixture<WebApplicationFactory<Program>>
                 b.UseSetting("Media:ServerUrl", "wss://media.example.org");
                 b.UseSetting("Media:ApiKey", "APIkey1");
                 b.UseSetting("Media:ApiSecret", Secret);
+                // These tests are about tokens and windows; the lobby has its own tests.
+                b.UseSetting("Media:LobbyForGuests", "false");
             }
 
             b.ConfigureServices(s =>

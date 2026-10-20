@@ -37,6 +37,8 @@ public sealed class ExpiryAndRevocationTests : IClassFixture<WebApplicationFacto
             b.UseSetting("Media:ServerUrl", "wss://media.example.org");
             b.UseSetting("Media:ApiKey", "APIkey1");
             b.UseSetting("Media:ApiSecret", Secret);
+            // These tests are about tokens and windows; the lobby has its own tests.
+            b.UseSetting("Media:LobbyForGuests", "false");
             b.ConfigureServices(s =>
             {
                 s.UseInMemoryKscDatabase(Guid.NewGuid().ToString());

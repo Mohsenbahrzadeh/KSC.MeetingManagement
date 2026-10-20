@@ -30,12 +30,14 @@ public sealed record MeetingDto(
     Guid OrganizerId,
     long Version,
     string? Number = null,
-    Guid? CommitteeId = null)
+    Guid? CommitteeId = null,
+    DateTimeOffset? StartedAtUtc = null,
+    DateTimeOffset? EndedAtUtc = null)
 {
     public static MeetingDto From(Meeting m)
     {
         ArgumentNullException.ThrowIfNull(m);
-        return new(m.Id, m.Title, m.Description, m.Mode, m.Status, m.StartUtc, m.EndUtc, m.OrganizerId, m.Version, m.Number, m.CommitteeId);
+        return new(m.Id, m.Title, m.Description, m.Mode, m.Status, m.StartUtc, m.EndUtc, m.OrganizerId, m.Version, m.Number, m.CommitteeId, m.StartedAtUtc, m.EndedAtUtc);
     }
 }
 

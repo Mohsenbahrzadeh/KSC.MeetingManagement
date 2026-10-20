@@ -51,6 +51,15 @@ public sealed class MediaOptions
     /// <summary>How long after the planned end people may still enter (late finish).</summary>
     public int JoinClosesMinutesAfterEnd { get; set; } = 120;
 
+    /// <summary>Guests wait in a lobby until the host admits them.</summary>
+    public bool LobbyForGuests { get; set; } = true;
+
+    /// <summary>Invited members also wait for admission (the organizer never does).</summary>
+    public bool LobbyForMembers { get; set; }
+
+    /// <summary>Address of the media server's HTTP API when it differs from the public one; defaults to the public address with http(s).</summary>
+    public string? ApiUrl { get; set; }
+
     public bool IsComplete =>
         !string.IsNullOrWhiteSpace(ServerUrl) && !string.IsNullOrWhiteSpace(ApiKey)
         && ApiSecret is { Length: >= MinSecretLength };
