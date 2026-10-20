@@ -53,6 +53,8 @@ builder.Services.AddSingleton<IPasswordHasher, Pbkdf2PasswordHasher>();
 builder.Services.AddSingleton<IAccessTokenIssuer, JwtAccessTokenIssuer>();
 builder.Services.AddScoped<IUserRepository, EfUserRepository>();
 builder.Services.AddScoped<AuthService>();
+builder.Services.AddScoped<IIdentityAdminStore, EfIdentityAdminStore>();
+builder.Services.AddScoped<IdentityAdminService>();
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(o =>
     {

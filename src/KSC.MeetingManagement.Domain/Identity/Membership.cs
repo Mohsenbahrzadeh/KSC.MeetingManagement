@@ -18,6 +18,11 @@ public static class Roles
     public const string Participant = "Participant";
     public const string Approver = "Approver";
     public const string Auditor = "Auditor";
+
+    public static IReadOnlyCollection<string> All { get; } =
+    [
+        TenantOwner, TenantAdministrator, WorkflowAdministrator, MeetingOrganizer, Secretary, Participant, Approver, Auditor,
+    ];
 }
 
 /// <summary>Link between a user and a tenant, carrying the user's roles in that tenant.</summary>
