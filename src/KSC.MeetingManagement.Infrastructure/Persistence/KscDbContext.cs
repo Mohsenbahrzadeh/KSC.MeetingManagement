@@ -8,6 +8,8 @@ public sealed class KscDbContext(DbContextOptions<KscDbContext> options, ITenant
 {
     public DbSet<Meeting> Meetings => Set<Meeting>();
 
+    public DbSet<Resolution> Resolutions => Set<Resolution>();
+
     public DbSet<Minutes> Minutes => Set<Minutes>();
 
     public DbSet<AgendaItem> AgendaItems => Set<AgendaItem>();
@@ -47,6 +49,22 @@ public sealed class KscDbContext(DbContextOptions<KscDbContext> options, ITenant
 
             // Defence in depth: tenant filtering never replaces authorization checks.
             b.HasQueryFilter(m => m.TenantId == CurrentTenantId);
+        });
+
+        modelBuilder.Entity<Resolution>(b =>
+        {
+            b.ToTable("resolutions");
+            b.HasKey(r => r.Id);
+            b.Property(r => r.TenantId).IsRequired();
+            b.Property(r => r.MeetingId).IsRequired();
+            b.Property(r => r.Number);
+            b.Property(r => r.Text).HasMaxLength(Resolution.MaxTextLength).IsRequired();
+            b.Property(r => r.Status).HasConversion<string>().HasMaxLength(20);
+            b.Property(r => r.RevocationReason).HasMaxLength(Resolution.MaxReasonLength);
+            b.Property(r => r.LockVersion).IsConcurrencyToken();
+            b.HasIndex(r => new { r.TenantId, r.MeetingId, r.Number }).IsUnique();
+            b.HasIndex(r => r.AgendaItemId);
+            b.HasQueryFilter(r => r.TenantId == CurrentTenantId);
         });
 
         modelBuilder.Entity<Minutes>(b =>
