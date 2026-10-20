@@ -1,23 +1,40 @@
+using KSC.MeetingManagement.Api.Observability;
+using KSC.MeetingManagement.Api.Tenancy;
+using KSC.MeetingManagement.Application.Tenants;
+using KSC.MeetingManagement.Infrastructure.Tenants;
+
 var builder = WebApplication.CreateBuilder(args);
 
-// Add services to the container.
+builder.Logging.ClearProviders();
+builder.Logging.AddJsonConsole(o => o.IncludeScopes = true);
 
 builder.Services.AddControllers();
-// Learn more about configuring OpenAPI at https://aka.ms/aspnet/openapi
 builder.Services.AddOpenApi();
+builder.Services.AddProblemDetails();
+builder.Services.AddExceptionHandler<ApiExceptionHandler>();
+
+builder.Services.AddScoped<TenantContext>();
+builder.Services.AddScoped<ITenantContext>(sp => sp.GetRequiredService<TenantContext>());
+builder.Services.AddScoped<ITenantContextSetter>(sp => sp.GetRequiredService<TenantContext>());
+builder.Services.AddSingleton<InMemoryTenantStore>();
+builder.Services.AddSingleton<ITenantStore>(sp => sp.GetRequiredService<InMemoryTenantStore>());
 
 var app = builder.Build();
 
-// Configure the HTTP request pipeline.
+app.UseMiddleware<CorrelationIdMiddleware>();
+app.UseExceptionHandler();
+
 if (app.Environment.IsDevelopment())
 {
     app.MapOpenApi();
 }
 
 app.UseHttpsRedirection();
-
+app.UseRouting();
+app.UseMiddleware<TenantResolutionMiddleware>();
 app.UseAuthorization();
-
 app.MapControllers();
 
 app.Run();
+
+public partial class Program;
