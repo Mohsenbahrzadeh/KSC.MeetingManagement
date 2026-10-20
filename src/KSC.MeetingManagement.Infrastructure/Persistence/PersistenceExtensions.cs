@@ -3,7 +3,9 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using KSC.MeetingManagement.Application.Attachments;
 using KSC.MeetingManagement.Application.Committees;
+using KSC.MeetingManagement.Infrastructure.Storage;
 using KSC.MeetingManagement.Application.Participants;
 
 namespace KSC.MeetingManagement.Infrastructure.Persistence;
@@ -27,6 +29,16 @@ public static class PersistenceExtensions
         services.TryAddSingleton(TimeProvider.System);
         services.AddScoped<IParticipantRepository, EfParticipantRepository>();
         services.AddScoped<ParticipantService>();
+        services.AddScoped<IAttachmentRepository, EfAttachmentRepository>();
+        services.TryAddSingleton(new AttachmentOptions
+        {
+            MaxBytes = long.TryParse(configuration["Attachments:MaxBytes"], out var maxBytes) && maxBytes > 0
+                ? maxBytes
+                : AttachmentOptions.DefaultMaxBytes,
+        });
+        services.TryAddSingleton<IFileStore>(_ => new LocalFileStore(
+            configuration["Storage:Root"] ?? Path.Combine(AppContext.BaseDirectory, "App_Data", "files")));
+        services.AddScoped<AttachmentService>();
         services.AddScoped<ICommitteeRepository, EfCommitteeRepository>();
         services.AddScoped<CommitteeService>();
         return services;

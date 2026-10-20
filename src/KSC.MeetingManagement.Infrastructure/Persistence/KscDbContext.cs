@@ -8,6 +8,8 @@ public sealed class KscDbContext(DbContextOptions<KscDbContext> options, ITenant
 {
     public DbSet<Meeting> Meetings => Set<Meeting>();
 
+    public DbSet<MeetingAttachment> Attachments => Set<MeetingAttachment>();
+
     public DbSet<Committee> Committees => Set<Committee>();
 
     public DbSet<MeetingNumberCounter> NumberCounters => Set<MeetingNumberCounter>();
@@ -40,6 +42,23 @@ public sealed class KscDbContext(DbContextOptions<KscDbContext> options, ITenant
 
             // Defence in depth: tenant filtering never replaces authorization checks.
             b.HasQueryFilter(m => m.TenantId == CurrentTenantId);
+        });
+
+        modelBuilder.Entity<MeetingAttachment>(b =>
+        {
+            b.ToTable("meeting_attachments");
+            b.HasKey(a => a.Id);
+            b.Property(a => a.TenantId).IsRequired();
+            b.Property(a => a.MeetingId).IsRequired();
+            b.Property(a => a.FileName).HasMaxLength(200).IsRequired();
+            b.Property(a => a.ContentType).HasMaxLength(150).IsRequired();
+            b.Property(a => a.SizeBytes);
+            b.Property(a => a.Sha256).HasMaxLength(64).IsRequired();
+            b.Property(a => a.StorageKey).HasMaxLength(100).IsRequired();
+            b.Property(a => a.UploadedBy);
+            b.Property(a => a.UploadedAtUtc);
+            b.HasIndex(a => new { a.TenantId, a.MeetingId });
+            b.HasQueryFilter(a => a.TenantId == CurrentTenantId);
         });
 
         modelBuilder.Entity<Committee>(b =>
