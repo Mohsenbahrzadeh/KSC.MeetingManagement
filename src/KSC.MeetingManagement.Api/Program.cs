@@ -1,3 +1,4 @@
+using KSC.MeetingManagement.Api.Authentication;
 using KSC.MeetingManagement.Api.Authorization;
 using KSC.MeetingManagement.Api.Observability;
 using KSC.MeetingManagement.Api.Security;
@@ -9,7 +10,9 @@ using KSC.MeetingManagement.Application.Notifications;
 using KSC.MeetingManagement.Application.Tenants;
 using KSC.MeetingManagement.Infrastructure.Persistence;
 using KSC.MeetingManagement.Infrastructure.Tenants;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.IdentityModel.Tokens;
 
 var builder = WebApplication.CreateBuilder(args);
 builder.Configuration.ValidateKscConfiguration();
@@ -27,10 +30,12 @@ builder.Services.AddScoped<TenantContext>();
 builder.Services.AddScoped<ITenantContext>(sp => sp.GetRequiredService<TenantContext>());
 builder.Services.AddScoped<ITenantContextSetter>(sp => sp.GetRequiredService<TenantContext>());
 builder.Services.AddSingleton<InMemoryTenantStore>();
-builder.Services.AddSingleton<ITenantStore>(sp => sp.GetRequiredService<InMemoryTenantStore>());
+builder.Services.AddScoped<EfTenantStore>();
+builder.Services.AddScoped<ITenantStore, CompositeTenantStore>();
 
 builder.Services.AddSingleton<InMemoryMembershipStore>();
-builder.Services.AddSingleton<IMembershipStore>(sp => sp.GetRequiredService<InMemoryMembershipStore>());
+builder.Services.AddScoped<EfMembershipStore>();
+builder.Services.AddScoped<IMembershipStore, CompositeMembershipStore>();
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped<ICurrentUser, HttpCurrentUser>();
 builder.Services.AddKscRateLimiting(builder.Configuration);
@@ -41,7 +46,27 @@ builder.Services.AddSingleton<IAuthorizationMiddlewareResultHandler, AuditingAut
 builder.Services.AddKscPersistence(builder.Configuration);
 builder.Services.AddSingleton<INotificationDateFormatter, JalaliNotificationDateFormatter>();
 builder.Services.AddHostedService<OutboxWorker>();
-builder.Services.AddAuthentication();
+var jwt = JwtSettings.From(builder.Configuration);
+builder.Services.AddSingleton(jwt);
+builder.Services.AddSingleton(new AuthOptions());
+builder.Services.AddSingleton<IPasswordHasher, Pbkdf2PasswordHasher>();
+builder.Services.AddSingleton<IAccessTokenIssuer, JwtAccessTokenIssuer>();
+builder.Services.AddScoped<IUserRepository, EfUserRepository>();
+builder.Services.AddScoped<AuthService>();
+builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
+    .AddJwtBearer(o =>
+    {
+        o.MapInboundClaims = false;
+        o.TokenValidationParameters = new TokenValidationParameters
+        {
+            ValidIssuer = jwt.Issuer,
+            ValidAudience = jwt.Audience,
+            IssuerSigningKey = jwt.EffectiveKey,
+            ValidAlgorithms = [SecurityAlgorithms.HmacSha256],
+            ClockSkew = TimeSpan.FromSeconds(30),
+            NameClaimType = "name",
+        };
+    });
 builder.Services.AddAuthorization();
 builder.Services.AddSingleton<IAuthorizationPolicyProvider, PermissionPolicyProvider>();
 builder.Services.AddScoped<IAuthorizationHandler, PermissionHandler>();

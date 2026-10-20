@@ -1,5 +1,7 @@
 using KSC.MeetingManagement.Application.Tenants;
 using KSC.MeetingManagement.Domain.Audit;
+using KSC.MeetingManagement.Domain.Identity;
+using KSC.MeetingManagement.Domain.Tenants;
 using KSC.MeetingManagement.Domain.Notifications;
 using KSC.MeetingManagement.Domain.Meetings;
 using Microsoft.EntityFrameworkCore;
@@ -8,6 +10,14 @@ namespace KSC.MeetingManagement.Infrastructure.Persistence;
 
 public sealed class KscDbContext(DbContextOptions<KscDbContext> options, ITenantContext tenant) : DbContext(options)
 {
+    public DbSet<Tenant> Tenants => Set<Tenant>();
+
+    public DbSet<MembershipRow> Memberships => Set<MembershipRow>();
+
+    public DbSet<User> Users => Set<User>();
+
+    public DbSet<RefreshToken> RefreshTokens => Set<RefreshToken>();
+
     public DbSet<Meeting> Meetings => Set<Meeting>();
 
     public DbSet<ChatMessage> ChatMessages => Set<ChatMessage>();
@@ -44,6 +54,60 @@ public sealed class KscDbContext(DbContextOptions<KscDbContext> options, ITenant
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         ArgumentNullException.ThrowIfNull(modelBuilder);
+
+        // Identity tables are global (no tenant filter): they are what tenant resolution and sign-in are built from.
+        modelBuilder.Entity<Tenant>(b =>
+        {
+            b.ToTable("tenants");
+            b.HasKey(t => t.Id);
+            b.Property(t => t.Id).ValueGeneratedNever();
+            b.Property(t => t.Slug).HasMaxLength(100).IsRequired();
+            b.Property(t => t.Name).HasMaxLength(300).IsRequired();
+            b.Property(t => t.TimeZoneId).HasMaxLength(100).IsRequired();
+            b.Property(t => t.Status).HasConversion<string>().HasMaxLength(20);
+            b.HasIndex(t => t.Slug).IsUnique();
+            b.Ignore(t => t.IsActive);
+        });
+
+        modelBuilder.Entity<MembershipRow>(b =>
+        {
+            b.ToTable("memberships");
+            b.HasKey(m => new { m.TenantId, m.UserId });
+            b.Property(m => m.Roles).HasMaxLength(500).IsRequired();
+            b.Property(m => m.Status).HasConversion<string>().HasMaxLength(20);
+            b.HasIndex(m => m.UserId);
+        });
+
+        modelBuilder.Entity<User>(b =>
+        {
+            b.ToTable("users");
+            b.HasKey(u => u.Id);
+            b.Property(u => u.Id).ValueGeneratedNever();
+            b.Property(u => u.Email).HasMaxLength(User.MaxEmailLength).IsRequired();
+            b.Property(u => u.DisplayName).HasMaxLength(User.MaxNameLength).IsRequired();
+            b.Property(u => u.PasswordHash).HasMaxLength(300).IsRequired();
+            b.Property(u => u.IsActive);
+            b.Property(u => u.FailedLoginCount);
+            b.Property(u => u.LockedUntilUtc);
+            b.Property(u => u.CreatedAtUtc);
+            b.Property(u => u.LastLoginAtUtc);
+            b.HasIndex(u => u.Email).IsUnique();
+        });
+
+        modelBuilder.Entity<RefreshToken>(b =>
+        {
+            b.ToTable("refresh_tokens");
+            b.HasKey(t => t.Id);
+            b.Property(t => t.Id).ValueGeneratedNever();
+            b.Property(t => t.UserId);
+            b.Property(t => t.TokenHash).HasMaxLength(64).IsRequired();
+            b.Property(t => t.CreatedAtUtc);
+            b.Property(t => t.ExpiresAtUtc);
+            b.Property(t => t.RevokedAtUtc);
+            b.Property(t => t.Replaced);
+            b.HasIndex(t => t.TokenHash).IsUnique();
+            b.HasIndex(t => t.UserId);
+        });
 
         modelBuilder.Entity<Meeting>(b =>
         {

@@ -45,6 +45,7 @@ public sealed class PermissionAuthorizationTests : IClassFixture<WebApplicationF
     {
         var app = factory.WithWebHostBuilder(b => b.ConfigureServices(services =>
         {
+            services.UseInMemoryKscDatabase(Guid.NewGuid().ToString());
             services.AddAuthentication(TestAuthHandler.Scheme)
                 .AddScheme<AuthenticationSchemeOptions, TestAuthHandler>(TestAuthHandler.Scheme, _ => { });
         }));
