@@ -5,3 +5,7 @@ obj/
 *.user
 TestResults/
 .claude/
+
+# Rendered media configs contain secrets
+deploy/media/.env
+deploy/media/*.rendered.*

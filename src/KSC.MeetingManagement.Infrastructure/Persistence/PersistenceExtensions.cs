@@ -52,6 +52,13 @@ public static class PersistenceExtensions
         services.AddScoped<ChatService>();
         services.AddScoped<PresenceService>();
         services.TryAddSingleton(sp => new LiveKitWebhookVerifier(sp.GetRequiredService<MediaOptions>(), sp.GetRequiredService<TimeProvider>()));
+        services.TryAddSingleton(new TurnOptions
+        {
+            Urls = (configuration["Turn:Urls"] ?? string.Empty).Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries),
+            Secret = configuration["Turn:Secret"],
+            TtlMinutes = IntOr(configuration["Turn:TtlMinutes"], 60),
+        });
+        services.TryAddSingleton(sp => new TurnCredentialService(sp.GetRequiredService<TurnOptions>(), sp.GetRequiredService<TimeProvider>()));
         services.AddScoped<MediaAccessService>();
         services.AddScoped<RoomControlService>();
         services.TryAddSingleton<IMediaRoomControl>(sp => sp.GetRequiredService<MediaOptions>().IsComplete

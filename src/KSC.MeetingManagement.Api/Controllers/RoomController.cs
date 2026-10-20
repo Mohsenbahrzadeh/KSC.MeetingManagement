@@ -16,12 +16,13 @@ public sealed record JoinRoomAsGuestRequest(Guid ParticipantId, string Token);
 
 public sealed record WaitingResponse(string Status, int RetryAfterSeconds);
 
-public sealed record JoinRoomResponse(string ServerUrl, string Token, string Room, MediaRole Role, DateTimeOffset ExpiresAtUtc);
+public sealed record JoinRoomResponse(
+    string ServerUrl, string Token, string Room, MediaRole Role, DateTimeOffset ExpiresAtUtc, IReadOnlyList<IceServer>? IceServers = null);
 
 [ApiController]
 [Route("api/v1/meetings/{meetingId:guid}/room")]
 [RequiresTenant]
-public sealed class RoomController(MediaAccessService media, RoomControlService control) : ControllerBase
+public sealed class RoomController(MediaAccessService media, RoomControlService control, TurnCredentialService turn) : ControllerBase
 {
     private const int WaitingRetrySeconds = 5;
 
@@ -87,7 +88,9 @@ public sealed class RoomController(MediaAccessService media, RoomControlService 
 
     private IActionResult Respond(MediaJoinResult result) => result.Outcome switch
     {
-        MediaJoinOutcome.Granted => Ok(new JoinRoomResponse(result.Token!.ServerUrl, result.Token.Token, result.Token.Room, result.Token.Role, result.Token.ExpiresAtUtc)),
+        MediaJoinOutcome.Granted => Ok(new JoinRoomResponse(
+            result.Token!.ServerUrl, result.Token.Token, result.Token.Room, result.Token.Role, result.Token.ExpiresAtUtc,
+            turn.Issue(result.Token.Identity) is { } ice ? [ice] : null)),
         MediaJoinOutcome.MeetingNotFound => NotFound(),
         MediaJoinOutcome.Waiting => Accepted(new WaitingResponse("Waiting", WaitingRetrySeconds)),
         MediaJoinOutcome.NotAllowed => Problem("شما اجازهٔ ورود به این جلسه را ندارید.", statusCode: StatusCodes.Status403Forbidden),
