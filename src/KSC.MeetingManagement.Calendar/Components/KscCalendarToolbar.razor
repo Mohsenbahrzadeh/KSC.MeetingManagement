@@ -1,0 +1,77 @@
+@* Calendar toolbar: today, previous/next, view switch and jump-to-date. All controls resolve through CalendarNavigator. *@
+<div class="ksc-toolbar" dir="rtl" lang="fa" role="toolbar" aria-label="ابزار تقویم">
+    <div class="ksc-toolbar-nav">
+        <button type="button" class="ksc-btn ksc-toolbar-today" @onclick="GoToday">امروز</button>
+        <button type="button" class="ksc-btn ksc-toolbar-prev" aria-label="@PreviousLabel" disabled="@(!_navigator.CanMove(View, -1))" @onclick="() => Move(-1)">›</button>
+        <button type="button" class="ksc-btn ksc-toolbar-next" aria-label="@NextLabel" disabled="@(!_navigator.CanMove(View, 1))" @onclick="() => Move(1)">‹</button>
+        <h2 class="ksc-toolbar-title" aria-live="polite">@_navigator.Title(View)</h2>
+    </div>
+    <div class="ksc-toolbar-jump">
+        <KscJalaliDatePicker Value="View.Anchor" ValueChanged="OnJump" Required="true" Today="@Today" Calendar="_navigator.Calendar" Label="رفتن به تاریخ" />
+    </div>
+    <div class="ksc-toolbar-views" role="group" aria-label="نوع نما">
+        @foreach (var (mode, label) in Modes)
+        {
+            <button type="button"
+                    class="ksc-btn ksc-toolbar-view @(View.Mode == mode ? "is-active" : "")"
+                    aria-pressed="@(View.Mode == mode ? "true" : "false")"
+                    @onclick="() => SetMode(mode)">@label</button>
+        }
+    </div>
+</div>
+
+@code {
+    private static readonly (CalendarViewMode Mode, string Label)[] Modes =
+    [
+        (CalendarViewMode.Month, "ماه"),
+        (CalendarViewMode.Week, "هفته"),
+        (CalendarViewMode.Day, "روز"),
+        (CalendarViewMode.Agenda, "برنامه"),
+    ];
+
+    private CalendarNavigator _navigator = new();
+
+    [Parameter, EditorRequired] public CalendarView View { get; set; }
+
+    [Parameter] public EventCallback<CalendarView> ViewChanged { get; set; }
+
+    /// <summary>Today in the organisation's time zone; defaults to the Tehran clock.</summary>
+    [Parameter] public JalaliDate? Today { get; set; }
+
+    [Parameter] public IKscJalaliCalendar Calendar { get; set; } = KscJalaliCalendarService.Instance;
+
+    private string PreviousLabel => View.Mode switch
+    {
+        CalendarViewMode.Week => "هفته قبل",
+        CalendarViewMode.Day => "روز قبل",
+        _ => "ماه قبل",
+    };
+
+    private string NextLabel => View.Mode switch
+    {
+        CalendarViewMode.Week => "هفته بعد",
+        CalendarViewMode.Day => "روز بعد",
+        _ => "ماه بعد",
+    };
+
+    protected override void OnParametersSet() => _navigator = new CalendarNavigator(Calendar);
+
+    private Task GoToday() => Raise(CalendarNavigator.Today(View, Today ?? TehranClock.Today(calendar: Calendar)));
+
+    private Task Move(int direction) => Raise(direction < 0 ? _navigator.Previous(View) : _navigator.Next(View));
+
+    private Task SetMode(CalendarViewMode mode) => Raise(CalendarNavigator.WithMode(View, mode));
+
+    private Task OnJump(JalaliDate? date) => date is { } d ? Raise(CalendarNavigator.GoTo(View, d)) : Task.CompletedTask;
+
+    private async Task Raise(CalendarView next)
+    {
+        if (next == View)
+        {
+            return;
+        }
+
+        View = next;
+        await ViewChanged.InvokeAsync(next);
+    }
+}
