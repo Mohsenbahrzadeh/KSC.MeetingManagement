@@ -25,6 +25,8 @@ public sealed record UpdateMeetingRequest(
     DateTimeOffset? End,
     bool AllowConflicts = false);
 
+public sealed record RescheduleMeetingRequest(long ExpectedVersion, DateTimeOffset Start, DateTimeOffset End, bool AllowConflicts = false);
+
 public sealed record CancelMeetingRequest(long ExpectedVersion, string Reason);
 
 public sealed record PostponeMeetingRequest(long ExpectedVersion);
@@ -76,6 +78,14 @@ public sealed class MeetingsController(MeetingService meetings) : ControllerBase
             id,
             new UpdateMeetingCommand(request.ExpectedVersion, request.Title, request.Description, request.Mode, request.Start, request.End, request.AllowConflicts),
             cancellationToken));
+    }
+
+    [HttpPost("{id:guid}/reschedule")]
+    [HasPermission(Permissions.MeetingsEdit)]
+    public Task<IActionResult> Reschedule(Guid id, RescheduleMeetingRequest request, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        return Mutate(() => meetings.RescheduleAsync(id, request.ExpectedVersion, request.Start, request.End, request.AllowConflicts, cancellationToken));
     }
 
     [HttpPost("{id:guid}/cancel")]

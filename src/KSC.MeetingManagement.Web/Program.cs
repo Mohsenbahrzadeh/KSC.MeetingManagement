@@ -20,6 +20,7 @@ builder.Services.AddHttpClient(ApiMeetingCalendarDataProvider.ClientName, (sp, c
     }
 });
 builder.Services.AddScoped<IMeetingCalendarDataProvider, ApiMeetingCalendarDataProvider>();
+builder.Services.AddScoped<MeetingsApiClient>();
 
 var app = builder.Build();
 

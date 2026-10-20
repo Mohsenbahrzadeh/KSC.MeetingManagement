@@ -76,6 +76,11 @@ public sealed class MeetingService(
         }, cancellationToken, command.AllowConflicts ? null : EnsureNoConflictsForAttendeesAsync);
     }
 
+    /// <summary>Changes only the time (used by drag and drop). Conflicts are checked unless explicitly allowed.</summary>
+    public Task<MeetingDto?> RescheduleAsync(
+        Guid id, long expectedVersion, DateTimeOffset start, DateTimeOffset end, bool allowConflicts, CancellationToken cancellationToken) =>
+        MutateAsync(id, expectedVersion, m => m.Schedule(start, end), cancellationToken, allowConflicts ? null : EnsureNoConflictsForAttendeesAsync);
+
     public Task<MeetingDto?> CancelAsync(Guid id, long expectedVersion, string reason, CancellationToken cancellationToken) =>
         MutateAsync(id, expectedVersion, m => m.Cancel(reason), cancellationToken);
 
