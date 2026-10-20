@@ -22,6 +22,55 @@ namespace KSC.MeetingManagement.Infrastructure.Persistence.Migrations
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
 
+            modelBuilder.Entity("KSC.MeetingManagement.Domain.Meetings.Committee", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Description")
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId", "Name");
+
+                    b.ToTable("committees", (string)null);
+                });
+
+            modelBuilder.Entity("KSC.MeetingManagement.Domain.Meetings.CommitteeMember", b =>
+                {
+                    b.Property<Guid>("CommitteeId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Role")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("CommitteeId", "UserId");
+
+                    b.ToTable("committee_members", (string)null);
+                });
+
             modelBuilder.Entity("KSC.MeetingManagement.Domain.Meetings.Meeting", b =>
                 {
                     b.Property<Guid>("Id")
@@ -145,6 +194,20 @@ namespace KSC.MeetingManagement.Infrastructure.Persistence.Migrations
                     b.HasIndex("TenantId", "MeetingId");
 
                     b.ToTable("meeting_participants", (string)null);
+                });
+
+            modelBuilder.Entity("KSC.MeetingManagement.Domain.Meetings.CommitteeMember", b =>
+                {
+                    b.HasOne("KSC.MeetingManagement.Domain.Meetings.Committee", null)
+                        .WithMany("Members")
+                        .HasForeignKey("CommitteeId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("KSC.MeetingManagement.Domain.Meetings.Committee", b =>
+                {
+                    b.Navigation("Members");
                 });
 #pragma warning restore 612, 618
         }
