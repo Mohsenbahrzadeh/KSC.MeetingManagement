@@ -9,7 +9,8 @@
 
 <PageTitle>تقویم | مدیریت جلسات</PageTitle>
 
-<MudText Typo="Typo.h4" Class="mb-2" tabindex="-1">تقویم جلسات</MudText>
+<MudText Typo="Typo.h4" Class="ksc-page-title" tabindex="-1">تقویم جلسات</MudText>
+<MudText Class="ksc-page-sub">روی هر روز کلیک کنید تا جلسهٔ جدید بسازید؛ جلسه‌ها را بکشید و رها کنید تا جابه‌جا شوند.</MudText>
 <KscCalendar @ref="_calendar" @bind-View="_view" Provider="Provider" TimeZone="_layout.TimeZone"
              OnSlotSelected="CreateAsync" OnItemSelected="EditAsync" OnItemMoved="MoveAsync" />
 

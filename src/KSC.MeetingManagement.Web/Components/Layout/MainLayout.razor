@@ -1,21 +1,31 @@
 ﻿@inherits LayoutComponentBase
 
 <MudRTLProvider RightToLeft="true">
-    <MudThemeProvider Theme="KscTheme.Default" />
+    <MudThemeProvider Theme="KscTheme.Default" @bind-IsDarkMode="_dark" />
     <MudPopoverProvider />
     <MudDialogProvider />
     <MudSnackbarProvider />
 
     <MudLayout>
-        <MudAppBar Elevation="1">
+        <MudAppBar Elevation="0" Class="ksc-appbar">
             <MudIconButton Icon="@Icons.Material.Filled.Menu" Color="Color.Inherit" Edge="Edge.Start"
                            aria-label="باز و بسته کردن منو" OnClick="ToggleDrawer" />
-            <MudText Typo="Typo.h6" Class="ms-2">مدیریت جلسات</MudText>
+            <a href="/" class="ksc-brand" style="color: inherit; text-decoration: none;">
+                <span class="ksc-brand-mark" aria-hidden="true">
+                    <MudIcon Icon="@Icons.Material.Filled.Groups" Size="Size.Small" />
+                </span>
+                <span>مدیریت جلسات</span>
+            </a>
+            <MudSpacer />
+            <MudTooltip Text="@(_dark ? "حالت روشن" : "حالت تاریک")">
+                <MudIconButton Icon="@(_dark ? Icons.Material.Filled.LightMode : Icons.Material.Filled.DarkMode)" Color="Color.Inherit"
+                               aria-label="تغییر حالت روشن و تاریک" OnClick="ToggleDark" />
+            </MudTooltip>
         </MudAppBar>
 
         <MudDrawer @bind-Open="_drawerOpen" Variant="DrawerVariant.Responsive" Breakpoint="Breakpoint.Md"
-                   ClipMode="DrawerClipMode.Always" Elevation="0" aria-label="منوی اصلی">
-            <nav aria-label="منوی اصلی">
+                   ClipMode="DrawerClipMode.Always" Elevation="0" Class="ksc-drawer" aria-label="منوی اصلی">
+            <nav aria-label="منوی اصلی" class="pt-3">
                 <MudNavMenu>
                     @foreach (var item in NavItems.Main)
                     {
@@ -27,7 +37,7 @@
         </MudDrawer>
 
         <MudMainContent>
-            <MudContainer MaxWidth="MaxWidth.ExtraLarge" Class="py-4">
+            <MudContainer MaxWidth="MaxWidth.ExtraLarge" Class="py-6">
                 @Body
             </MudContainer>
         </MudMainContent>
@@ -42,6 +52,9 @@
 
 @code {
     private bool _drawerOpen = true;
+    private bool _dark;
 
     private void ToggleDrawer() => _drawerOpen = !_drawerOpen;
+
+    private void ToggleDark() => _dark = !_dark;
 }

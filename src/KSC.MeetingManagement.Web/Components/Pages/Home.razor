@@ -2,25 +2,39 @@
 
 <PageTitle>خانه | مدیریت جلسات</PageTitle>
 
-<MudText Typo="Typo.h4" Class="mb-2" tabindex="-1">مدیریت جلسات</MudText>
-<MudText Class="mb-4">از این‌جا به بخش‌های اصلی دسترسی دارید.</MudText>
+<section class="ksc-hero" aria-labelledby="home-title">
+    <h1 id="home-title" tabindex="-1">جلسه‌هایتان را ساده و منظم برگزار کنید</h1>
+    <p>تقویم شمسی، دستور جلسه، صورت‌جلسه با گردش تأیید، مصوبات و پیگیری اقدام‌ها، همه در یک‌جا.</p>
+    <div class="ksc-hero-actions">
+        <MudButton Href="/calendar" Variant="Variant.Filled" Size="Size.Large" StartIcon="@Icons.Material.Filled.CalendarMonth">رفتن به تقویم</MudButton>
+        <MudButton Href="/meetings" Variant="Variant.Outlined" Size="Size.Large" StartIcon="@Icons.Material.Filled.Groups">جلسات</MudButton>
+    </div>
+</section>
 
-<MudGrid>
-    @foreach (var item in NavItems.Main.Where(i => i.Href != "/"))
+<MudGrid Spacing="3">
+    @foreach (var (item, index) in NavItems.Main.Where(i => i.Href != "/").Select((i, n) => (i, n)))
     {
         <MudItem xs="12" sm="6" md="4">
-            <MudCard>
+            <MudCard Class="ksc-tile" Elevation="0">
                 <MudCardContent>
-                    <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
-                        <MudIcon Icon="@item.Icon" Color="Color.Primary" />
-                        <MudText Typo="Typo.h6">@item.Title</MudText>
-                    </MudStack>
+                    <div class="ksc-tile-icon t@(index % 3 + 1)"><MudIcon Icon="@item.Icon" /></div>
+                    <MudText Class="ksc-tile-title" Typo="Typo.h6">@item.Title</MudText>
+                    <MudText Typo="Typo.body2" Color="Color.Secondary">@Describe(item.Href)</MudText>
                 </MudCardContent>
                 <MudCardActions>
-                    <MudButton Href="@item.Href" Variant="Variant.Text" Color="Color.Primary">رفتن به @item.Title</MudButton>
+                    <MudButton Href="@item.Href" Variant="Variant.Text" Color="Color.Primary" EndIcon="@Icons.Material.Filled.ArrowBack">ورود</MudButton>
                 </MudCardActions>
             </MudCard>
         </MudItem>
     }
 </MudGrid>
 
+@code {
+    private static string Describe(string href) => href switch
+    {
+        "/calendar" => "نمای ماه، هفته، روز و فهرست با تاریخ شمسی؛ جلسهٔ جدید با یک کلیک.",
+        "/meetings" => "فهرست و مدیریت جلسات سازمان.",
+        "/committees" => "کمیته‌ها، اعضا و نقش‌هایشان.",
+        _ => string.Empty,
+    };
+}
