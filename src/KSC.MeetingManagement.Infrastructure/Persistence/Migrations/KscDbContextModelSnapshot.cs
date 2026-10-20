@@ -239,6 +239,9 @@ namespace KSC.MeetingManagement.Infrastructure.Persistence.Migrations
                         .HasMaxLength(1000)
                         .HasColumnType("character varying(1000)");
 
+                    b.Property<Guid?>("CommitteeId")
+                        .HasColumnType("uuid");
+
                     b.Property<string>("Description")
                         .HasMaxLength(4000)
                         .HasColumnType("character varying(4000)");
@@ -279,6 +282,8 @@ namespace KSC.MeetingManagement.Infrastructure.Persistence.Migrations
                         .HasColumnType("bigint");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("TenantId", "CommitteeId");
 
                     b.HasIndex("TenantId", "Number")
                         .IsUnique();

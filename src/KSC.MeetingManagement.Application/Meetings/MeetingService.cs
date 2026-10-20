@@ -8,6 +8,7 @@ namespace KSC.MeetingManagement.Application.Meetings;
 public sealed class MeetingService(
     IMeetingRepository repository,
     IParticipantRepository participants,
+    Committees.ICommitteeRepository committees,
     ITenantContext tenant,
     ICurrentUser user,
     TimeProvider clock)
@@ -37,7 +38,9 @@ public sealed class MeetingService(
         }
 
         var id = command.Id is { } given && given != Guid.Empty ? given : Guid.NewGuid();
+        await EnsureCommitteeAsync(command.CommitteeId, cancellationToken);
         var meeting = new Meeting(id, tenant.RequiredTenantId, command.Title, command.Mode, user.RequiredUserId);
+        meeting.SetCommittee(command.CommitteeId);
         if (!string.IsNullOrWhiteSpace(command.Description))
         {
             meeting.UpdateDetails(command.Title, command.Description, command.Mode);
@@ -66,9 +69,11 @@ public sealed class MeetingService(
             throw new MeetingDomainException("Both start and end are required together.");
         }
 
+        await EnsureCommitteeAsync(command.CommitteeId, cancellationToken);
         return await MutateAsync(id, command.ExpectedVersion, meeting =>
         {
             meeting.UpdateDetails(command.Title, command.Description, command.Mode);
+            meeting.SetCommittee(command.CommitteeId);
             if (command.Start is { } start && command.End is { } end)
             {
                 meeting.Schedule(start, end);
@@ -141,6 +146,14 @@ public sealed class MeetingService(
         if (conflicts.Count > 0)
         {
             throw new MeetingTimeConflictException(conflicts);
+        }
+    }
+
+    private async Task EnsureCommitteeAsync(Guid? committeeId, CancellationToken cancellationToken)
+    {
+        if (committeeId is { } id && await committees.GetAsync(id, cancellationToken) is not { IsActive: true })
+        {
+            throw new MeetingDomainException("The committee does not exist or is not active.");
         }
     }
 

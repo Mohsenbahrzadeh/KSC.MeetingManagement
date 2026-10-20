@@ -15,7 +15,8 @@ public sealed record CreateMeetingRequest(
     MeetingMode Mode,
     DateTimeOffset? Start,
     DateTimeOffset? End,
-    bool AllowConflicts = false);
+    bool AllowConflicts = false,
+    Guid? CommitteeId = null);
 
 public sealed record UpdateMeetingRequest(
     long ExpectedVersion,
@@ -24,7 +25,8 @@ public sealed record UpdateMeetingRequest(
     MeetingMode Mode,
     DateTimeOffset? Start,
     DateTimeOffset? End,
-    bool AllowConflicts = false);
+    bool AllowConflicts = false,
+    Guid? CommitteeId = null);
 
 public sealed record RescheduleMeetingRequest(long ExpectedVersion, DateTimeOffset Start, DateTimeOffset End, bool AllowConflicts = false);
 
@@ -49,7 +51,7 @@ public sealed class MeetingsController(MeetingService meetings) : ControllerBase
         try
         {
             var result = await meetings.CreateAsync(
-                new CreateMeetingCommand(request.Id, request.Title, request.Description, request.Mode, request.Start, request.End, request.AllowConflicts),
+                new CreateMeetingCommand(request.Id, request.Title, request.Description, request.Mode, request.Start, request.End, request.AllowConflicts, request.CommitteeId),
                 cancellationToken);
 
             return result.Created
@@ -79,7 +81,7 @@ public sealed class MeetingsController(MeetingService meetings) : ControllerBase
         ArgumentNullException.ThrowIfNull(request);
         return Mutate(() => meetings.UpdateAsync(
             id,
-            new UpdateMeetingCommand(request.ExpectedVersion, request.Title, request.Description, request.Mode, request.Start, request.End, request.AllowConflicts),
+            new UpdateMeetingCommand(request.ExpectedVersion, request.Title, request.Description, request.Mode, request.Start, request.End, request.AllowConflicts, request.CommitteeId),
             cancellationToken));
     }
 
