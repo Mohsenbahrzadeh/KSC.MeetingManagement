@@ -42,5 +42,15 @@ public sealed class EfMeetingRepository(KscDbContext db) : IMeetingRepository
     public async Task AddAsync(Meeting meeting, CancellationToken cancellationToken) =>
         await db.Meetings.AddAsync(meeting, cancellationToken);
 
-    public Task SaveChangesAsync(CancellationToken cancellationToken) => db.SaveChangesAsync(cancellationToken);
+    public async Task SaveChangesAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            await db.SaveChangesAsync(cancellationToken);
+        }
+        catch (DbUpdateConcurrencyException ex)
+        {
+            throw new MeetingConcurrencyException("The meeting was changed by someone else; reload and retry.", ex);
+        }
+    }
 }

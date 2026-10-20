@@ -153,4 +153,82 @@ public sealed class MeetingsApiTests : IClassFixture<WebApplicationFactory<Progr
         Assert.Equal(
             HttpStatusCode.UnprocessableEntity,
             (await Send(HttpMethod.Get, $"/api/v1/meetings?from={Uri.EscapeDataString(Start.ToString("O"))}&to={Uri.EscapeDataString(Start.AddDays(-1).ToString("O"))}", _tenantA, _organizerA)).StatusCode);
+
+    private async Task<MeetingDto> CreateScheduled()
+    {
+        var create = await Send(HttpMethod.Post, "/api/v1/meetings", _tenantA, _organizerA, NewMeeting(start: Start, end: Start.AddHours(1)));
+        return (await create.Content.ReadFromJsonAsync<MeetingDto>(Json))!;
+    }
+
+    [Fact]
+    public async Task Organizer_updates_meeting_and_version_increases()
+    {
+        var m = await CreateScheduled();
+
+        var response = await Send(HttpMethod.Put, $"/api/v1/meetings/{m.Id}", _tenantA, _organizerA,
+            new { expectedVersion = m.Version, title = "New", mode = "Online", start = Start.AddDays(1), end = Start.AddDays(1).AddHours(2) });
+        var updated = await response.Content.ReadFromJsonAsync<MeetingDto>(Json);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Equal("New", updated!.Title);
+        Assert.True(updated.Version > m.Version);
+    }
+
+    [Fact]
+    public async Task Stale_version_returns_conflict()
+    {
+        var m = await CreateScheduled();
+        var body = new { expectedVersion = m.Version, title = "X", mode = "Online" };
+        await Send(HttpMethod.Put, $"/api/v1/meetings/{m.Id}", _tenantA, _organizerA, body);
+
+        var stale = await Send(HttpMethod.Put, $"/api/v1/meetings/{m.Id}", _tenantA, _organizerA, body);
+
+        Assert.Equal(HttpStatusCode.Conflict, stale.StatusCode);
+    }
+
+    [Fact]
+    public async Task Cancel_requires_reason_and_blocks_further_edits()
+    {
+        var m = await CreateScheduled();
+
+        var noReason = await Send(HttpMethod.Post, $"/api/v1/meetings/{m.Id}/cancel", _tenantA, _organizerA,
+            new { expectedVersion = m.Version, reason = " " });
+        Assert.Equal(HttpStatusCode.UnprocessableEntity, noReason.StatusCode);
+
+        var cancel = await Send(HttpMethod.Post, $"/api/v1/meetings/{m.Id}/cancel", _tenantA, _organizerA,
+            new { expectedVersion = m.Version, reason = "No quorum" });
+        var cancelled = await cancel.Content.ReadFromJsonAsync<MeetingDto>(Json);
+        Assert.Equal("Cancelled", cancelled!.Status.ToString());
+
+        var edit = await Send(HttpMethod.Put, $"/api/v1/meetings/{m.Id}", _tenantA, _organizerA,
+            new { expectedVersion = cancelled.Version, title = "X", mode = "Online" });
+        Assert.Equal(HttpStatusCode.UnprocessableEntity, edit.StatusCode);
+    }
+
+    [Fact]
+    public async Task Postpone_clears_time_and_invalid_transition_is_rejected()
+    {
+        var m = await CreateScheduled();
+
+        var postpone = await Send(HttpMethod.Post, $"/api/v1/meetings/{m.Id}/postpone", _tenantA, _organizerA, new { expectedVersion = m.Version });
+        var postponed = await postpone.Content.ReadFromJsonAsync<MeetingDto>(Json);
+        Assert.Equal("Postponed", postponed!.Status.ToString());
+        Assert.Null(postponed.StartUtc);
+
+        var again = await Send(HttpMethod.Post, $"/api/v1/meetings/{m.Id}/postpone", _tenantA, _organizerA, new { expectedVersion = postponed.Version });
+        Assert.Equal(HttpStatusCode.UnprocessableEntity, again.StatusCode);
+    }
+
+    [Fact]
+    public async Task Participant_and_other_tenant_cannot_modify()
+    {
+        var m = await CreateScheduled();
+        var body = new { expectedVersion = m.Version, title = "X", mode = "Online" };
+
+        var asParticipant = await Send(HttpMethod.Put, $"/api/v1/meetings/{m.Id}", _tenantA, _participantA, body);
+        var otherTenant = await Send(HttpMethod.Put, $"/api/v1/meetings/{m.Id}", _tenantB, _organizerB, body);
+
+        Assert.Equal(HttpStatusCode.Forbidden, asParticipant.StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, otherTenant.StatusCode);
+    }
 }
