@@ -93,6 +93,8 @@ public static class NotificationRegistration
             Enabled = protector is not null,
         });
         services.TryAddScoped<OutboxProcessor>();
+        services.TryAddScoped<IOutboxAdminStore, EfOutboxAdminStore>();
+        services.TryAddScoped<OutboxAdminService>();
         services.TryAddScoped<ReminderService>();
         return services;
     }

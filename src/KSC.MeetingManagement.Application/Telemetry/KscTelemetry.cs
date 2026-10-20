@@ -27,3 +27,32 @@ public static class KscTelemetry
     public static Counter<long> AuthorizationDenied { get; } =
         AppMeter.CreateCounter<long>("ksc.authorization.denied", description: "Requests refused for lack of permission.");
 }
+
+/// <summary>
+/// Size of the notification queue across all organisations, refreshed by the outbox worker after every pass.
+/// Nothing is reported until the first refresh (for example when notifications are disabled), so an absent series means "not measured".
+/// </summary>
+public static class OutboxQueueMetrics
+{
+    private static readonly Meter QueueMeter = new(KscTelemetry.MeterName, "1.0");
+    private static volatile Snapshot? _current;
+
+    private sealed record Snapshot(int Pending, int Dead, double OldestPendingAgeSeconds);
+
+    static OutboxQueueMetrics()
+    {
+        QueueMeter.CreateObservableGauge<long>("ksc.outbox.pending", () => Measure(s => (long)s.Pending), description: "Notifications waiting to be delivered.");
+        QueueMeter.CreateObservableGauge<long>("ksc.outbox.dead", () => Measure(s => (long)s.Dead), description: "Notifications that were given up on and wait for an operator.");
+        QueueMeter.CreateObservableGauge<double>("ksc.outbox.oldest_pending_age_seconds", () => Measure(s => s.OldestPendingAgeSeconds), unit: "s", description: "Age of the oldest waiting notification.");
+    }
+
+    private static IEnumerable<Measurement<T>> Measure<T>(Func<Snapshot, T> pick)
+        where T : struct =>
+        _current is { } s ? [new Measurement<T>(pick(s))] : [];
+
+    public static void Update(int pending, int dead, double oldestPendingAgeSeconds) =>
+        _current = new Snapshot(pending, dead, oldestPendingAgeSeconds);
+
+    /// <summary>For tests.</summary>
+    public static void Reset() => _current = null;
+}

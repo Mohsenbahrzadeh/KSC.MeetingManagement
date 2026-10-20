@@ -76,10 +76,22 @@ public sealed partial class OutboxWorker(IServiceScopeFactory scopes, Notificati
             {
                 LogBatch(result.Claimed, result.Sent, result.Retrying, result.Dead, result.Skipped);
             }
+
+            await PublishQueueSizeAsync(scope.ServiceProvider, cancellationToken);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
             LogPassFailed(ex);
+        }
+    }
+
+    /// <summary>Exports the queue size (all organisations) as metrics, so a growing backlog or dead letters can raise an alert.</summary>
+    private async Task PublishQueueSizeAsync(IServiceProvider services, CancellationToken cancellationToken)
+    {
+        if (services.GetService<IOutboxAdminStore>() is { } store)
+        {
+            var stats = await store.StatsAsync(null, clock.GetUtcNow(), cancellationToken);
+            KSC.MeetingManagement.Application.Telemetry.OutboxQueueMetrics.Update(stats.Pending, stats.Dead, stats.OldestPendingAgeSeconds ?? 0);
         }
     }
 
