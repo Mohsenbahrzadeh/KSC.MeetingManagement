@@ -56,6 +56,7 @@
     min-block-size: 2.25rem; padding: .25rem .75rem; border: 1px solid var(--ksc-border); background: var(--ksc-bg); color: var(--ksc-fg);
     font: inherit; cursor: pointer;
 }
+.ksc-btn { min-inline-size: 2.5rem; }
 .ksc-btn:disabled { opacity: .4; cursor: default; }
 .ksc-btn.is-active { background: var(--ksc-accent); border-color: var(--ksc-accent); color: var(--ksc-accent-fg); }
 .ksc-toolbar-views .ksc-btn + .ksc-btn { border-inline-start: 0; }
@@ -63,6 +64,12 @@
 .ksc-toolbar-views .ksc-btn:last-child { border-start-end-radius: .375rem; border-end-end-radius: .375rem; }
 
 @media (max-width: 40rem) {
+    /* Touch targets: at least 44px for toolbar controls and 32px for dense grid cells (WCAG 2.5.8 asks for 24px). */
+    .ksc-btn, .ksc-datepicker-input, .ksc-datepicker-toggle, .ksc-filter-select { min-block-size: 2.75rem; }
+    .ksc-btn, .ksc-datepicker-toggle { min-inline-size: 2.75rem; }
+    .ksc-datepicker-nav { min-inline-size: 2.75rem; min-block-size: 2.75rem; }
+    .ksc-month-daynum { min-inline-size: 2rem; min-block-size: 2rem; }
+    .ksc-more { min-block-size: 2rem; }
     .ksc-toolbar { align-items: stretch; }
     .ksc-toolbar-views { inline-size: 100%; margin-inline-start: 0; }
     .ksc-toolbar-views .ksc-btn { flex: 1; }
@@ -104,7 +111,7 @@
 .ksc-month-cell:first-child { border-inline-start: 0; }
 .ksc-month-cell.is-outside { background: color-mix(in srgb, var(--ksc-border) 18%, var(--ksc-bg)); color: var(--ksc-muted); }
 .ksc-month-cell.is-today { background: var(--ksc-today-bg); }
-.ksc-month-daynum { align-self: flex-start; padding: .1rem .35rem; border: 0; border-radius: .25rem; background: transparent; color: inherit; font: inherit; font-size: .8125rem; cursor: pointer; }
+.ksc-month-daynum { align-self: flex-start; min-inline-size: 1.75rem; min-block-size: 1.75rem; padding: .1rem .35rem; border: 0; border-radius: .25rem; background: transparent; color: inherit; font: inherit; font-size: .8125rem; cursor: pointer; }
 .ksc-month-cell.is-today .ksc-month-daynum { background: var(--ksc-accent); color: var(--ksc-accent-fg); }
 .ksc-chip { padding: .1rem .3rem; font-size: .75rem; overflow: hidden; }
 .ksc-chip-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-inline-size: 0; }
