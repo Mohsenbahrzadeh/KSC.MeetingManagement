@@ -35,6 +35,28 @@ public sealed record MeetingDto(
     }
 }
 
+public sealed record UpdateMeetingCommand(
+    long ExpectedVersion,
+    string Title,
+    string? Description,
+    MeetingMode Mode,
+    DateTimeOffset? Start,
+    DateTimeOffset? End);
+
+/// <summary>Thrown when the meeting was changed by someone else since the caller last read it.</summary>
+public sealed class MeetingConcurrencyException : InvalidOperationException
+{
+    public MeetingConcurrencyException(string message)
+        : base(message)
+    {
+    }
+
+    public MeetingConcurrencyException(string message, Exception inner)
+        : base(message, inner)
+    {
+    }
+}
+
 public sealed record CreateMeetingResult(MeetingDto Meeting, bool Created);
 
 /// <summary>Persistence port. Implementations must only return meetings of the current tenant.</summary>

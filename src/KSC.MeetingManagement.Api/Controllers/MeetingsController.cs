@@ -15,6 +15,18 @@ public sealed record CreateMeetingRequest(
     DateTimeOffset? Start,
     DateTimeOffset? End);
 
+public sealed record UpdateMeetingRequest(
+    long ExpectedVersion,
+    string Title,
+    string? Description,
+    MeetingMode Mode,
+    DateTimeOffset? Start,
+    DateTimeOffset? End);
+
+public sealed record CancelMeetingRequest(long ExpectedVersion, string Reason);
+
+public sealed record PostponeMeetingRequest(long ExpectedVersion);
+
 [ApiController]
 [Route("api/v1/meetings")]
 [RequiresTenant]
@@ -48,6 +60,49 @@ public sealed class MeetingsController(MeetingService meetings) : ControllerBase
     [HasPermission(Permissions.MeetingsView)]
     public async Task<IActionResult> Get(Guid id, CancellationToken cancellationToken) =>
         await meetings.GetAsync(id, cancellationToken) is { } dto ? Ok(dto) : NotFound();
+
+    [HttpPut("{id:guid}")]
+    [HasPermission(Permissions.MeetingsEdit)]
+    public Task<IActionResult> Update(Guid id, UpdateMeetingRequest request, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        return Mutate(() => meetings.UpdateAsync(
+            id,
+            new UpdateMeetingCommand(request.ExpectedVersion, request.Title, request.Description, request.Mode, request.Start, request.End),
+            cancellationToken));
+    }
+
+    [HttpPost("{id:guid}/cancel")]
+    [HasPermission(Permissions.MeetingsCancel)]
+    public Task<IActionResult> Cancel(Guid id, CancelMeetingRequest request, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        return Mutate(() => meetings.CancelAsync(id, request.ExpectedVersion, request.Reason, cancellationToken));
+    }
+
+    [HttpPost("{id:guid}/postpone")]
+    [HasPermission(Permissions.MeetingsEdit)]
+    public Task<IActionResult> Postpone(Guid id, PostponeMeetingRequest request, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        return Mutate(() => meetings.PostponeAsync(id, request.ExpectedVersion, cancellationToken));
+    }
+
+    private async Task<IActionResult> Mutate(Func<Task<MeetingDto?>> action)
+    {
+        try
+        {
+            return await action() is { } dto ? Ok(dto) : NotFound();
+        }
+        catch (MeetingDomainException ex)
+        {
+            return Problem(ex.Message, statusCode: StatusCodes.Status422UnprocessableEntity);
+        }
+        catch (MeetingConcurrencyException ex)
+        {
+            return Problem(ex.Message, statusCode: StatusCodes.Status409Conflict);
+        }
+    }
 
     /// <summary>Lists meetings; from/to select the meetings overlapping that range (used by the scheduler).</summary>
     [HttpGet]

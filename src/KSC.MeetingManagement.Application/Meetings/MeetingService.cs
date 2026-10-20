@@ -44,6 +44,49 @@ public sealed class MeetingService(IMeetingRepository repository, ITenantContext
         return new CreateMeetingResult(MeetingDto.From(meeting), Created: true);
     }
 
+    /// <summary>Updates details and time. Returns null when the meeting does not exist in the current tenant.</summary>
+    public async Task<MeetingDto?> UpdateAsync(Guid id, UpdateMeetingCommand command, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(command);
+
+        if ((command.Start is null) != (command.End is null))
+        {
+            throw new MeetingDomainException("Both start and end are required together.");
+        }
+
+        return await MutateAsync(id, command.ExpectedVersion, meeting =>
+        {
+            meeting.UpdateDetails(command.Title, command.Description, command.Mode);
+            if (command.Start is { } start && command.End is { } end)
+            {
+                meeting.Schedule(start, end);
+            }
+        }, cancellationToken);
+    }
+
+    public Task<MeetingDto?> CancelAsync(Guid id, long expectedVersion, string reason, CancellationToken cancellationToken) =>
+        MutateAsync(id, expectedVersion, m => m.Cancel(reason), cancellationToken);
+
+    public Task<MeetingDto?> PostponeAsync(Guid id, long expectedVersion, CancellationToken cancellationToken) =>
+        MutateAsync(id, expectedVersion, m => m.Postpone(), cancellationToken);
+
+    private async Task<MeetingDto?> MutateAsync(Guid id, long expectedVersion, Action<Meeting> change, CancellationToken cancellationToken)
+    {
+        if (await repository.GetAsync(id, cancellationToken) is not { } meeting)
+        {
+            return null;
+        }
+
+        if (meeting.Version != expectedVersion)
+        {
+            throw new MeetingConcurrencyException("The meeting was changed by someone else; reload and retry.");
+        }
+
+        change(meeting);
+        await repository.SaveChangesAsync(cancellationToken);
+        return MeetingDto.From(meeting);
+    }
+
     public async Task<MeetingDto?> GetAsync(Guid id, CancellationToken cancellationToken) =>
         await repository.GetAsync(id, cancellationToken) is { } meeting ? MeetingDto.From(meeting) : null;
 
