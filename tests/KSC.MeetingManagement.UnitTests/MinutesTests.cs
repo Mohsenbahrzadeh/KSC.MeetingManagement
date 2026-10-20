@@ -123,22 +123,26 @@ public class MinutesTests
     public void Invalid_transitions_are_rejected_and_leave_the_status_unchanged(string scenario)
     {
         var m = New();
+        void SubmitTwice()
+        {
+            m.Submit(Author, Now);
+            m.Submit(Author, Now);
+        }
+
+        void ApproveTwice()
+        {
+            m.Submit(Author, Now);
+            m.Approve(Approver, null, Now);
+            m.Approve(Approver, null, Now);
+        }
+
         Action act = scenario switch
         {
-            "submit-twice" => () =>
-            {
-                m.Submit(Author, Now);
-                m.Submit(Author, Now);
-            },
+            "submit-twice" => SubmitTwice,
             "approve-draft" => () => m.Approve(Approver, null, Now),
             "reject-draft" => () => m.Reject(Approver, "x", Now),
             "reopen-draft" => () => m.Reopen(Approver, "x", Now),
-            _ => () =>
-            {
-                m.Submit(Author, Now);
-                m.Approve(Approver, null, Now);
-                m.Approve(Approver, null, Now);
-            },
+            _ => ApproveTwice,
         };
 
         Assert.Throws<MeetingDomainException>(act);

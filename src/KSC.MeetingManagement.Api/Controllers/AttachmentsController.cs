@@ -1,3 +1,5 @@
+using Microsoft.AspNetCore.RateLimiting;
+using KSC.MeetingManagement.Api.Security;
 using KSC.MeetingManagement.Api.Observability;
 using KSC.MeetingManagement.Api.Authorization;
 using KSC.MeetingManagement.Api.Tenancy;
@@ -20,6 +22,7 @@ public sealed class AttachmentsController(AttachmentService attachments) : Contr
     public async Task<IActionResult> List(Guid meetingId, CancellationToken cancellationToken) =>
         Ok(await attachments.ListAsync(meetingId, cancellationToken));
 
+    [EnableRateLimiting(SecurityExtensions.SensitivePolicy)]
     [Audited("attachment.upload", "attachment", "meetingId")]
     [HttpPost]
     [HasPermission(Permissions.MeetingsEdit)]
@@ -44,6 +47,7 @@ public sealed class AttachmentsController(AttachmentService attachments) : Contr
         }
     }
 
+    [EnableRateLimiting(SecurityExtensions.SensitivePolicy)]
     [Audited("attachment.download", "attachment", "meetingId")]
     [HttpGet("{attachmentId:guid}")]
     [HasPermission(Permissions.MeetingsView)]

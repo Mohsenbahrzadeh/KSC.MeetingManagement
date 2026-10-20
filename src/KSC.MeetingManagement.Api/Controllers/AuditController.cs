@@ -1,3 +1,5 @@
+using Microsoft.AspNetCore.RateLimiting;
+using KSC.MeetingManagement.Api.Security;
 using KSC.MeetingManagement.Api.Authorization;
 using KSC.MeetingManagement.Api.Tenancy;
 using KSC.MeetingManagement.Application.Audit;
@@ -10,6 +12,7 @@ namespace KSC.MeetingManagement.Api.Controllers;
 [ApiController]
 [Route("api/v1/audit")]
 [RequiresTenant]
+[EnableRateLimiting(SecurityExtensions.SensitivePolicy)]
 public sealed class AuditController(AuditQueryService audit) : ControllerBase
 {
     /// <summary>Searches the audit log of the current organisation, newest first.</summary>

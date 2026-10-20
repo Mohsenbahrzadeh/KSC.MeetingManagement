@@ -1,3 +1,5 @@
+using Microsoft.AspNetCore.RateLimiting;
+using KSC.MeetingManagement.Api.Security;
 using KSC.MeetingManagement.Api.Observability;
 using KSC.MeetingManagement.Api.Authorization;
 using KSC.MeetingManagement.Api.Tenancy;
@@ -20,6 +22,7 @@ public sealed record JoinRoomResponse(string ServerUrl, string Token, string Roo
 public sealed class RoomController(MediaAccessService media) : ControllerBase
 {
     /// <summary>The organizer or an invited participant asks for a token to enter the meeting room.</summary>
+    [EnableRateLimiting(SecurityExtensions.SensitivePolicy)]
     [Audited("room.join", "room", "meetingId")]
     [HttpPost("join")]
     [HasPermission(Permissions.MeetingsView)]
@@ -27,6 +30,7 @@ public sealed class RoomController(MediaAccessService media) : ControllerBase
         Respond(await media.JoinAsync(meetingId, request?.DisplayName, cancellationToken));
 
     /// <summary>A guest enters with the invitation token. Every failure of the invitation looks the same.</summary>
+    [EnableRateLimiting(SecurityExtensions.GuestPolicy)]
     [HttpPost("join-guest")]
     [Audited("room.join-guest", "room", "meetingId", Guest = true)]
     [AllowAnonymous]

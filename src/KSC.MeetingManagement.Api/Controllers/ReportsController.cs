@@ -1,3 +1,5 @@
+using Microsoft.AspNetCore.RateLimiting;
+using KSC.MeetingManagement.Api.Security;
 using System.Text;
 using KSC.MeetingManagement.Api.Authorization;
 using KSC.MeetingManagement.Api.Observability;
@@ -13,6 +15,7 @@ namespace KSC.MeetingManagement.Api.Controllers;
 [ApiController]
 [Route("api/v1/reports")]
 [RequiresTenant]
+[EnableRateLimiting(SecurityExtensions.SensitivePolicy)]
 [HasPermission(Permissions.ReportsView)]
 public sealed class ReportsController(ReportService reports) : ControllerBase
 {
