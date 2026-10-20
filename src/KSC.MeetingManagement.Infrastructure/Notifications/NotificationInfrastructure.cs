@@ -255,3 +255,36 @@ public sealed class EfReminderSource(KscDbContext db) : IReminderSource
             .Where(a => (a.Status == ActionItemStatus.Open || a.Status == ActionItemStatus.InProgress) && a.DueDate <= dueUntil)
             .ToListAsync(cancellationToken);
 }
+
+public sealed class EfOutboxAdminStore(KscDbContext db) : IOutboxAdminStore
+{
+    public async Task<OutboxStats> StatsAsync(Guid? tenantId, DateTimeOffset nowUtc, CancellationToken cancellationToken)
+    {
+        // Global numbers (tenantId null) are for metrics only and carry no message content.
+        var query = db.OutboxMessages.IgnoreQueryFilters().AsNoTracking();
+        if (tenantId is { } id)
+        {
+            query = query.Where(m => m.TenantId == id);
+        }
+
+        var counts = await query.GroupBy(m => m.Status).Select(g => new { g.Key, Count = g.Count() }).ToListAsync(cancellationToken);
+        var oldest = await query.Where(m => m.Status == OutboxStatus.Pending).MinAsync(m => (DateTimeOffset?)m.CreatedAtUtc, cancellationToken);
+        int Of(OutboxStatus s) => counts.FirstOrDefault(c => c.Key == s)?.Count ?? 0;
+        return new OutboxStats(Of(OutboxStatus.Pending), Of(OutboxStatus.Sent), Of(OutboxStatus.Dead), Of(OutboxStatus.Skipped),
+            oldest is { } created ? Math.Max(0, (nowUtc - created).TotalSeconds) : null);
+    }
+
+    public async Task<IReadOnlyList<OutboxMessage>> DeadAsync(Guid tenantId, Guid? id, int skip, int take, bool track, CancellationToken cancellationToken)
+    {
+        var query = db.OutboxMessages.IgnoreQueryFilters().Where(m => m.TenantId == tenantId && m.Status == OutboxStatus.Dead);
+        if (id is { } only)
+        {
+            query = query.Where(m => m.Id == only);
+        }
+
+        query = query.OrderBy(m => m.CreatedAtUtc).ThenBy(m => m.Id).Skip(skip).Take(take);
+        return await (track ? query : query.AsNoTracking()).ToListAsync(cancellationToken);
+    }
+
+    public Task SaveChangesAsync(CancellationToken cancellationToken) => db.SaveChangesAsync(cancellationToken);
+}
