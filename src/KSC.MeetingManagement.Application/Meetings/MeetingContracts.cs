@@ -9,7 +9,8 @@ public sealed record CreateMeetingCommand(
     MeetingMode Mode,
     DateTimeOffset? Start,
     DateTimeOffset? End,
-    bool AllowConflicts = false);
+    bool AllowConflicts = false,
+    Guid? CommitteeId = null);
 
 public sealed record MeetingQuery(
     DateTimeOffset? From,
@@ -28,12 +29,13 @@ public sealed record MeetingDto(
     DateTimeOffset? EndUtc,
     Guid OrganizerId,
     long Version,
-    string? Number = null)
+    string? Number = null,
+    Guid? CommitteeId = null)
 {
     public static MeetingDto From(Meeting m)
     {
         ArgumentNullException.ThrowIfNull(m);
-        return new(m.Id, m.Title, m.Description, m.Mode, m.Status, m.StartUtc, m.EndUtc, m.OrganizerId, m.Version, m.Number);
+        return new(m.Id, m.Title, m.Description, m.Mode, m.Status, m.StartUtc, m.EndUtc, m.OrganizerId, m.Version, m.Number, m.CommitteeId);
     }
 }
 
@@ -44,7 +46,8 @@ public sealed record UpdateMeetingCommand(
     MeetingMode Mode,
     DateTimeOffset? Start,
     DateTimeOffset? End,
-    bool AllowConflicts = false);
+    bool AllowConflicts = false,
+    Guid? CommitteeId = null);
 
 /// <summary>An existing meeting that overlaps a requested time for a person who would attend both.</summary>
 public sealed record MeetingConflict(Guid MeetingId, string? Number, string Title, DateTimeOffset StartUtc, DateTimeOffset EndUtc, Guid UserId);

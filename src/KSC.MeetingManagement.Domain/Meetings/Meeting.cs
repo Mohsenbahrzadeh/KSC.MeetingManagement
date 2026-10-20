@@ -61,6 +61,9 @@ public sealed class Meeting
     public DateTimeOffset? EndUtc { get; private set; }
     public string? CancellationReason { get; private set; }
 
+    /// <summary>The committee this meeting belongs to, if any (reports can filter by it).</summary>
+    public Guid? CommitteeId { get; private set; }
+
     /// <summary>Human-readable number unique within the tenant (for example 2026-0007); assigned once at creation.</summary>
     public string? Number { get; private set; }
 
@@ -97,6 +100,21 @@ public sealed class Meeting
 
     /// <summary>Used only to retry number assignment after a lost race, before the meeting is persisted.</summary>
     public void ClearNumber() => Number = null;
+
+    public void SetCommittee(Guid? committeeId)
+    {
+        if (committeeId == Guid.Empty)
+        {
+            throw new MeetingDomainException("Committee id is invalid.");
+        }
+
+        if (committeeId != CommitteeId)
+        {
+            EnsureEditable();
+            CommitteeId = committeeId;
+            Version++;
+        }
+    }
 
     public void UpdateDetails(string title, string? description, MeetingMode mode)
     {

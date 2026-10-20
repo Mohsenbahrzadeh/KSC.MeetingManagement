@@ -47,6 +47,7 @@ public sealed class KscDbContext(DbContextOptions<KscDbContext> options, ITenant
             b.Property(m => m.Status).HasConversion<string>().HasMaxLength(20);
             b.Property(m => m.Version).IsConcurrencyToken();
             b.Property(m => m.AgendaRevision).IsConcurrencyToken();
+            b.HasIndex(m => new { m.TenantId, m.CommitteeId });
             b.Property(m => m.Number).HasMaxLength(32);
             b.HasIndex(m => new { m.TenantId, m.Number }).IsUnique();
             b.HasIndex(m => new { m.TenantId, m.StartUtc });

@@ -1,5 +1,6 @@
 using KSC.MeetingManagement.Application.Media;
 using KSC.MeetingManagement.Application.Meetings;
+using KSC.MeetingManagement.Application.Reports;
 using KSC.MeetingManagement.Infrastructure.Media;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
@@ -78,6 +79,8 @@ public static class PersistenceExtensions
         services.AddScoped<IAuditLog>(sp => sp.GetRequiredService<EfAuditLog>());
         services.AddScoped<IAuditQuery>(sp => sp.GetRequiredService<EfAuditLog>());
         services.AddScoped<AuditQueryService>();
+        services.AddScoped<IReportRepository, EfReportRepository>();
+        services.AddScoped<ReportService>();
         services.AddScoped<IActionItemRepository, EfActionItemRepository>();
         services.AddScoped<ActionItemService>();
         services.AddScoped<IResolutionRepository, EfResolutionRepository>();
