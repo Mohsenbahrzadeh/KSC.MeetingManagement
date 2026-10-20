@@ -39,7 +39,9 @@ public sealed record AttendanceRow(
     int Accepted,
     int Declined,
     int Revoked,
-    int Guests);
+    int Guests,
+    int Present = 0,
+    double PresentMinutes = 0);
 
 public sealed record OwnerActionSummary(Guid OwnerUserId, int Active, int Overdue, int Done);
 

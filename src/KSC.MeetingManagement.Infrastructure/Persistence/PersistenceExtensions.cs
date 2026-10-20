@@ -46,6 +46,9 @@ public static class PersistenceExtensions
         services.TryAddSingleton(options);
         services.TryAddSingleton<IMediaTokenService>(sp => new LiveKitTokenService(sp.GetRequiredService<MediaOptions>(), sp.GetRequiredService<TimeProvider>()));
         services.AddScoped<IRoomEntryRepository, EfRoomEntryRepository>();
+        services.AddScoped<IPresenceRepository, EfPresenceRepository>();
+        services.AddScoped<PresenceService>();
+        services.TryAddSingleton(sp => new LiveKitWebhookVerifier(sp.GetRequiredService<MediaOptions>(), sp.GetRequiredService<TimeProvider>()));
         services.AddScoped<MediaAccessService>();
         services.AddScoped<RoomControlService>();
         services.TryAddSingleton<IMediaRoomControl>(sp => sp.GetRequiredService<MediaOptions>().IsComplete
