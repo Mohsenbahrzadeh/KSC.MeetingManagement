@@ -1,3 +1,4 @@
+using KSC.MeetingManagement.Api.Observability;
 using KSC.MeetingManagement.Api.Authorization;
 using KSC.MeetingManagement.Api.Tenancy;
 using KSC.MeetingManagement.Application.Meetings;
@@ -34,6 +35,7 @@ public sealed class MinutesController(MinutesService minutes, IAuthorizationServ
         await minutes.GetVersionAsync(meetingId, number, await CanSeeUnapprovedAsync(), cancellationToken) is { } dto ? Ok(dto) : NotFound();
 
     /// <summary>Creates the minutes (expectedVersionNumber 0) or saves a new version of the draft.</summary>
+    [Audited("minutes.save", "minutes", "meetingId")]
     [HttpPut]
     [HasPermission(Permissions.MinutesWrite)]
     public Task<IActionResult> Save(Guid meetingId, SaveMinutesRequest request, CancellationToken cancellationToken)
@@ -42,11 +44,13 @@ public sealed class MinutesController(MinutesService minutes, IAuthorizationServ
         return Run(() => minutes.SaveAsync(meetingId, request.Content, request.ExpectedVersionNumber, cancellationToken));
     }
 
+    [Audited("minutes.submit", "minutes", "meetingId")]
     [HttpPost("submit")]
     [HasPermission(Permissions.MinutesWrite)]
     public Task<IActionResult> Submit(Guid meetingId, CancellationToken cancellationToken) =>
         Run(() => minutes.SubmitAsync(meetingId, cancellationToken));
 
+    [Audited("minutes.approve", "minutes", "meetingId")]
     [HttpPost("approve")]
     [HasPermission(Permissions.MinutesApprove)]
     public Task<IActionResult> Approve(Guid meetingId, CommentRequest request, CancellationToken cancellationToken)
@@ -55,6 +59,7 @@ public sealed class MinutesController(MinutesService minutes, IAuthorizationServ
         return Run(() => minutes.ApproveAsync(meetingId, request.Comment, cancellationToken));
     }
 
+    [Audited("minutes.reject", "minutes", "meetingId")]
     [HttpPost("reject")]
     [HasPermission(Permissions.MinutesApprove)]
     public Task<IActionResult> Reject(Guid meetingId, CommentRequest request, CancellationToken cancellationToken)
@@ -64,6 +69,7 @@ public sealed class MinutesController(MinutesService minutes, IAuthorizationServ
     }
 
     /// <summary>The authorised way to change approved minutes; a reason is required and the minutes go through review again.</summary>
+    [Audited("minutes.reopen", "minutes", "meetingId")]
     [HttpPost("reopen")]
     [HasPermission(Permissions.MinutesApprove)]
     public Task<IActionResult> Reopen(Guid meetingId, CommentRequest request, CancellationToken cancellationToken)

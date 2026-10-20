@@ -1,6 +1,7 @@
 using KSC.MeetingManagement.Api.Authorization;
 using KSC.MeetingManagement.Api.Observability;
 using KSC.MeetingManagement.Api.Tenancy;
+using KSC.MeetingManagement.Application.Audit;
 using KSC.MeetingManagement.Application.Identity;
 using KSC.MeetingManagement.Application.Tenants;
 using KSC.MeetingManagement.Infrastructure.Persistence;
@@ -28,6 +29,8 @@ builder.Services.AddSingleton<InMemoryMembershipStore>();
 builder.Services.AddSingleton<IMembershipStore>(sp => sp.GetRequiredService<InMemoryMembershipStore>());
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped<ICurrentUser, HttpCurrentUser>();
+builder.Services.AddScoped<IRequestInfo, HttpRequestInfo>();
+builder.Services.AddSingleton<IAuthorizationMiddlewareResultHandler, AuditingAuthorizationResultHandler>();
 builder.Services.AddKscPersistence(builder.Configuration);
 builder.Services.AddAuthentication();
 builder.Services.AddAuthorization();

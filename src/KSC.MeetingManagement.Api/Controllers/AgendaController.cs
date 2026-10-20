@@ -1,3 +1,4 @@
+using KSC.MeetingManagement.Api.Observability;
 using KSC.MeetingManagement.Api.Authorization;
 using KSC.MeetingManagement.Api.Tenancy;
 using KSC.MeetingManagement.Application.Agenda;
@@ -22,6 +23,7 @@ public sealed class AgendaController(AgendaService agenda) : ControllerBase
     public async Task<IActionResult> Get(Guid meetingId, CancellationToken cancellationToken) =>
         await agenda.GetAsync(meetingId, cancellationToken) is { } dto ? Ok(dto) : NotFound();
 
+    [Audited("agenda.add", "agenda", "meetingId")]
     [HttpPost]
     [HasPermission(Permissions.MeetingsEdit)]
     public Task<IActionResult> Add(Guid meetingId, AgendaItemRequest request, CancellationToken cancellationToken)
@@ -30,6 +32,7 @@ public sealed class AgendaController(AgendaService agenda) : ControllerBase
         return Run(() => agenda.AddAsync(meetingId, request.ExpectedRevision, ToInput(request), cancellationToken));
     }
 
+    [Audited("agenda.update", "agenda", "meetingId")]
     [HttpPut("{itemId:guid}")]
     [HasPermission(Permissions.MeetingsEdit)]
     public Task<IActionResult> Update(Guid meetingId, Guid itemId, AgendaItemRequest request, CancellationToken cancellationToken)
@@ -38,11 +41,13 @@ public sealed class AgendaController(AgendaService agenda) : ControllerBase
         return Run(() => agenda.UpdateAsync(meetingId, itemId, request.ExpectedRevision, ToInput(request), cancellationToken));
     }
 
+    [Audited("agenda.remove", "agenda", "meetingId")]
     [HttpDelete("{itemId:guid}")]
     [HasPermission(Permissions.MeetingsEdit)]
     public Task<IActionResult> Remove(Guid meetingId, Guid itemId, [FromQuery] long expectedRevision, CancellationToken cancellationToken) =>
         Run(() => agenda.RemoveAsync(meetingId, itemId, expectedRevision, cancellationToken));
 
+    [Audited("agenda.reorder", "agenda", "meetingId")]
     [HttpPut("order")]
     [HasPermission(Permissions.MeetingsEdit)]
     public Task<IActionResult> Reorder(Guid meetingId, ReorderAgendaRequest request, CancellationToken cancellationToken)

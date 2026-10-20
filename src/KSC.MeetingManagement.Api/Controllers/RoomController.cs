@@ -1,3 +1,4 @@
+using KSC.MeetingManagement.Api.Observability;
 using KSC.MeetingManagement.Api.Authorization;
 using KSC.MeetingManagement.Api.Tenancy;
 using KSC.MeetingManagement.Application.Media;
@@ -19,6 +20,7 @@ public sealed record JoinRoomResponse(string ServerUrl, string Token, string Roo
 public sealed class RoomController(MediaAccessService media) : ControllerBase
 {
     /// <summary>The organizer or an invited participant asks for a token to enter the meeting room.</summary>
+    [Audited("room.join", "room", "meetingId")]
     [HttpPost("join")]
     [HasPermission(Permissions.MeetingsView)]
     public async Task<IActionResult> Join(Guid meetingId, JoinRoomRequest? request, CancellationToken cancellationToken) =>
@@ -26,6 +28,7 @@ public sealed class RoomController(MediaAccessService media) : ControllerBase
 
     /// <summary>A guest enters with the invitation token. Every failure of the invitation looks the same.</summary>
     [HttpPost("join-guest")]
+    [Audited("room.join-guest", "room", "meetingId", Guest = true)]
     [AllowAnonymous]
     public async Task<IActionResult> JoinAsGuest(Guid meetingId, JoinRoomAsGuestRequest request, CancellationToken cancellationToken)
     {

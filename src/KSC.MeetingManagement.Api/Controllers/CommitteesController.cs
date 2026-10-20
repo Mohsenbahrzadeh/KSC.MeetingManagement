@@ -1,3 +1,4 @@
+using KSC.MeetingManagement.Api.Observability;
 using KSC.MeetingManagement.Api.Authorization;
 using KSC.MeetingManagement.Api.Tenancy;
 using KSC.MeetingManagement.Application.Committees;
@@ -30,6 +31,7 @@ public sealed class CommitteesController(CommitteeService committees) : Controll
     public async Task<IActionResult> Get(Guid id, CancellationToken cancellationToken) =>
         await committees.GetAsync(id, cancellationToken) is { } dto ? Ok(dto) : NotFound();
 
+    [Audited("committee.create", "committee", "id")]
     [HttpPost]
     [HasPermission(Permissions.OrganizationManage)]
     public async Task<IActionResult> Create(CreateCommitteeRequest request, CancellationToken cancellationToken)
@@ -46,6 +48,7 @@ public sealed class CommitteesController(CommitteeService committees) : Controll
         }
     }
 
+    [Audited("committee.update", "committee", "id")]
     [HttpPut("{id:guid}")]
     [HasPermission(Permissions.OrganizationManage)]
     public Task<IActionResult> Update(Guid id, UpdateCommitteeRequest request, CancellationToken cancellationToken)
@@ -54,6 +57,7 @@ public sealed class CommitteesController(CommitteeService committees) : Controll
         return Run(() => committees.UpdateAsync(id, request.Name, request.Description, request.IsActive, cancellationToken));
     }
 
+    [Audited("committee.add-member", "committee", "id")]
     [HttpPost("{id:guid}/members")]
     [HasPermission(Permissions.OrganizationManage)]
     public Task<IActionResult> AddMember(Guid id, AddCommitteeMemberRequest request, CancellationToken cancellationToken)
@@ -62,6 +66,7 @@ public sealed class CommitteesController(CommitteeService committees) : Controll
         return Run(() => committees.AddMemberAsync(id, request.UserId, request.Role, cancellationToken));
     }
 
+    [Audited("committee.change-role", "committee", "id")]
     [HttpPut("{id:guid}/members/{userId:guid}")]
     [HasPermission(Permissions.OrganizationManage)]
     public Task<IActionResult> ChangeRole(Guid id, Guid userId, ChangeCommitteeRoleRequest request, CancellationToken cancellationToken)
@@ -70,6 +75,7 @@ public sealed class CommitteesController(CommitteeService committees) : Controll
         return Run(() => committees.ChangeMemberRoleAsync(id, userId, request.Role, cancellationToken));
     }
 
+    [Audited("committee.remove-member", "committee", "id")]
     [HttpDelete("{id:guid}/members/{userId:guid}")]
     [HasPermission(Permissions.OrganizationManage)]
     public Task<IActionResult> RemoveMember(Guid id, Guid userId, CancellationToken cancellationToken) =>

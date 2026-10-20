@@ -1,4 +1,5 @@
 using KSC.MeetingManagement.Application.Tenants;
+using KSC.MeetingManagement.Domain.Audit;
 using KSC.MeetingManagement.Domain.Meetings;
 using Microsoft.EntityFrameworkCore;
 
@@ -7,6 +8,8 @@ namespace KSC.MeetingManagement.Infrastructure.Persistence;
 public sealed class KscDbContext(DbContextOptions<KscDbContext> options, ITenantContext tenant) : DbContext(options)
 {
     public DbSet<Meeting> Meetings => Set<Meeting>();
+
+    public DbSet<AuditEvent> AuditEvents => Set<AuditEvent>();
 
     public DbSet<ActionItem> ActionItems => Set<ActionItem>();
 
@@ -51,6 +54,26 @@ public sealed class KscDbContext(DbContextOptions<KscDbContext> options, ITenant
 
             // Defence in depth: tenant filtering never replaces authorization checks.
             b.HasQueryFilter(m => m.TenantId == CurrentTenantId);
+        });
+
+        modelBuilder.Entity<AuditEvent>(b =>
+        {
+            b.ToTable("audit_events");
+            b.HasKey(e => e.Id);
+            b.Property(e => e.TenantId).IsRequired();
+            b.Property(e => e.OccurredAtUtc);
+            b.Property(e => e.ActorType).HasConversion<string>().HasMaxLength(20);
+            b.Property(e => e.ActorId);
+            b.Property(e => e.Action).HasMaxLength(AuditEvent.MaxActionLength).IsRequired();
+            b.Property(e => e.ResourceType).HasMaxLength(AuditEvent.MaxResourceTypeLength).IsRequired();
+            b.Property(e => e.ResourceId);
+            b.Property(e => e.Outcome).HasConversion<string>().HasMaxLength(20);
+            b.Property(e => e.CorrelationId).HasMaxLength(64);
+            b.Property(e => e.Detail).HasMaxLength(AuditEvent.MaxDetailLength);
+            b.HasIndex(e => new { e.TenantId, e.OccurredAtUtc });
+            b.HasIndex(e => new { e.TenantId, e.ResourceId });
+            b.HasIndex(e => new { e.TenantId, e.ActorId });
+            b.HasQueryFilter(e => e.TenantId == CurrentTenantId);
         });
 
         modelBuilder.Entity<ActionItem>(b =>
