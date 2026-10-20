@@ -132,6 +132,54 @@ namespace KSC.MeetingManagement.Infrastructure.Persistence.Migrations
                     b.ToTable("meetings", (string)null);
                 });
 
+            modelBuilder.Entity("KSC.MeetingManagement.Domain.Meetings.MeetingAttachment", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("ContentType")
+                        .IsRequired()
+                        .HasMaxLength(150)
+                        .HasColumnType("character varying(150)");
+
+                    b.Property<string>("FileName")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<Guid>("MeetingId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Sha256")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<long>("SizeBytes")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("StorageKey")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset>("UploadedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("UploadedBy")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId", "MeetingId");
+
+                    b.ToTable("meeting_attachments", (string)null);
+                });
+
             modelBuilder.Entity("KSC.MeetingManagement.Domain.Meetings.MeetingNumberCounter", b =>
                 {
                     b.Property<Guid>("TenantId")
