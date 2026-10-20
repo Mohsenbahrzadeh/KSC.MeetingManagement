@@ -10,6 +10,10 @@ public sealed class KscDbContext(DbContextOptions<KscDbContext> options, ITenant
 {
     public DbSet<Meeting> Meetings => Set<Meeting>();
 
+    public DbSet<PresenceRecord> PresenceRecords => Set<PresenceRecord>();
+
+    public DbSet<ProcessedMediaEvent> ProcessedMediaEvents => Set<ProcessedMediaEvent>();
+
     public DbSet<RoomEntry> RoomEntries => Set<RoomEntry>();
 
     public DbSet<OutboxMessage> OutboxMessages => Set<OutboxMessage>();
@@ -60,6 +64,33 @@ public sealed class KscDbContext(DbContextOptions<KscDbContext> options, ITenant
 
             // Defence in depth: tenant filtering never replaces authorization checks.
             b.HasQueryFilter(m => m.TenantId == CurrentTenantId);
+        });
+
+        modelBuilder.Entity<PresenceRecord>(b =>
+        {
+            b.ToTable("presence_records");
+            b.HasKey(p => p.Id);
+            b.Property(p => p.TenantId).IsRequired();
+            b.Property(p => p.MeetingId).IsRequired();
+            b.Property(p => p.Identity).HasMaxLength(128).IsRequired();
+            b.Property(p => p.DisplayName).HasMaxLength(RoomEntry.MaxNameLength).IsRequired();
+            b.Property(p => p.JoinedAtUtc);
+            b.Property(p => p.LeftAtUtc);
+            b.Ignore(p => p.IsOpen);
+            b.HasIndex(p => new { p.TenantId, p.MeetingId, p.Identity });
+            b.HasQueryFilter(p => p.TenantId == CurrentTenantId);
+        });
+
+        modelBuilder.Entity<ProcessedMediaEvent>(b =>
+        {
+            b.ToTable("processed_media_events");
+            b.HasKey(p => p.Id);
+            b.Property(p => p.TenantId).IsRequired();
+            b.Property(p => p.EventId).HasMaxLength(128).IsRequired();
+            b.Property(p => p.Type).HasMaxLength(40).IsRequired();
+            b.Property(p => p.ReceivedAtUtc);
+            b.HasIndex(p => new { p.TenantId, p.EventId }).IsUnique();
+            b.HasQueryFilter(p => p.TenantId == CurrentTenantId);
         });
 
         modelBuilder.Entity<RoomEntry>(b =>

@@ -43,7 +43,7 @@ public sealed class EfReportRepository(KscDbContext db) : IReportRepository
         var meetings = await db.Meetings.AsNoTracking()
             .Where(m => m.StartUtc != null && m.StartUtc >= fromUtc && m.StartUtc < toUtc)
             .OrderBy(m => m.StartUtc).ThenBy(m => m.Id).Skip(skip).Take(take)
-            .Select(m => new { m.Id, m.Number, m.Title, m.StartUtc })
+            .Select(m => new { m.Id, m.Number, m.Title, m.StartUtc, m.EndUtc, m.EndedAtUtc })
             .ToListAsync(cancellationToken);
 
         var ids = meetings.Select(m => m.Id).ToList();
@@ -52,16 +52,28 @@ public sealed class EfReportRepository(KscDbContext db) : IReportRepository
             .Select(p => new { p.MeetingId, p.Status, p.Kind })
             .ToListAsync(cancellationToken);
 
+        var stays = await db.PresenceRecords.AsNoTracking()
+            .Where(p => ids.Contains(p.MeetingId))
+            .Select(p => new { p.MeetingId, p.Identity, p.JoinedAtUtc, p.LeftAtUtc })
+            .ToListAsync(cancellationToken);
+
         return meetings.Select(m =>
         {
             var mine = participants.Where(p => p.MeetingId == m.Id).ToList();
+            var present = stays.Where(s => s.MeetingId == m.Id).ToList();
+
+            // A stay without a "left" event is measured up to the end of the meeting.
+            var openUntil = m.EndedAtUtc ?? m.EndUtc ?? DateTimeOffset.UtcNow;
+            var minutes = present.Sum(s => Math.Max(0, ((s.LeftAtUtc ?? openUntil) - s.JoinedAtUtc).TotalMinutes));
             return new AttendanceRow(
                 m.Id, m.Number, m.Title, m.StartUtc,
                 mine.Count(p => p.Status == InvitationStatus.Invited),
                 mine.Count(p => p.Status == InvitationStatus.Accepted),
                 mine.Count(p => p.Status == InvitationStatus.Declined),
                 mine.Count(p => p.Status == InvitationStatus.Revoked),
-                mine.Count(p => p.Kind == ParticipantKind.Guest && p.Status != InvitationStatus.Revoked));
+                mine.Count(p => p.Kind == ParticipantKind.Guest && p.Status != InvitationStatus.Revoked),
+                present.Select(s => s.Identity).Distinct().Count(),
+                Math.Round(minutes, 2));
         }).ToList();
     }
 
