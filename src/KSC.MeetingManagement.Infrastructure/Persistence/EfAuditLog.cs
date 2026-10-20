@@ -40,6 +40,7 @@ public sealed partial class EfAuditLog(
         }
         catch (Exception ex) when (ex is DbUpdateException or ArgumentException or InvalidOperationException)
         {
+            Application.Telemetry.KscTelemetry.AuditFailures.Add(1);
             LogAuditFailure(ex, entry.Action);
         }
     }

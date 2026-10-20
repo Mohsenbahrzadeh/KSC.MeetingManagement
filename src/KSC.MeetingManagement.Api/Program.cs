@@ -33,6 +33,7 @@ builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped<ICurrentUser, HttpCurrentUser>();
 builder.Services.AddKscRateLimiting(builder.Configuration);
 builder.Services.AddKscCors(builder.Configuration);
+builder.Services.AddKscHealth();
 builder.Services.AddScoped<IRequestInfo, HttpRequestInfo>();
 builder.Services.AddSingleton<IAuthorizationMiddlewareResultHandler, AuditingAuthorizationResultHandler>();
 builder.Services.AddKscPersistence(builder.Configuration);
@@ -66,7 +67,12 @@ app.UseAuthentication();
 // After authentication so the "sensitive" limit can be applied per signed-in user.
 app.UseRateLimiter();
 app.UseAuthorization();
+// Start collecting at startup so early measurements are not missed.
+_ = app.Services.GetRequiredService<MetricsCollector>();
+
 app.MapControllers();
+app.MapKscHealth();
+app.MapKscMetrics(app.Configuration);
 
 app.Run();
 

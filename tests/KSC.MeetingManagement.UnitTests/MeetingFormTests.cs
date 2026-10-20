@@ -152,8 +152,11 @@ public sealed class MeetingFormDialogTests : BunitContext, IAsyncLifetime
 
     private static CalendarSlot NineToTen => Layout.SlotAt(JalaliDate.Create(1404, 1, 1), new TimeOnly(9, 0), TimeSpan.FromHours(1));
 
-    private static void ClickSave(IRenderedComponent<MudDialogProvider> provider) =>
-        provider.FindAll("button").Single(b => b.TextContent.Contains("ذخیره", StringComparison.Ordinal)).Click();
+    // Find and click happen inside the renderer's own context so a background re-render cannot replace the button in between.
+    private static Task ClickAsync(IRenderedComponent<MudDialogProvider> provider, string text) =>
+        provider.InvokeAsync(() => provider.FindAll("button").Single(b => b.TextContent.Contains(text, StringComparison.Ordinal)).Click());
+
+    private static Task ClickSave(IRenderedComponent<MudDialogProvider> provider) => ClickAsync(provider, "ذخیره");
 
     [Fact]
     public async Task Create_from_a_slot_posts_the_exact_utc_times_with_a_client_generated_id()
@@ -162,7 +165,7 @@ public sealed class MeetingFormDialogTests : BunitContext, IAsyncLifetime
         var provider = await OpenAsync(NineToTen);
 
         provider.FindAll("input")[0].Input("هیئت مدیره");
-        ClickSave(provider);
+        await ClickSave(provider);
 
         provider.WaitForAssertion(() => Assert.Single(_requests));
         var (method, path, body) = _requests[0];
@@ -181,7 +184,7 @@ public sealed class MeetingFormDialogTests : BunitContext, IAsyncLifetime
     {
         var provider = await OpenAsync(NineToTen);
 
-        ClickSave(provider);
+        await ClickSave(provider);
 
         provider.WaitForAssertion(() => Assert.Contains("عنوان جلسه الزامی است", provider.Markup, StringComparison.Ordinal));
         Assert.Empty(_requests);
@@ -197,9 +200,9 @@ public sealed class MeetingFormDialogTests : BunitContext, IAsyncLifetime
         var provider = await OpenAsync(NineToTen);
         provider.FindAll("input")[0].Input("جلسه");
 
-        ClickSave(provider);
+        await ClickSave(provider);
         provider.WaitForAssertion(() => Assert.Contains("تداخل دارد", provider.Markup, StringComparison.Ordinal));
-        provider.FindAll("button").Single(b => b.TextContent.Contains("ثبت با وجود تداخل", StringComparison.Ordinal)).Click();
+        await ClickAsync(provider, "ثبت با وجود تداخل");
 
         provider.WaitForAssertion(() => Assert.Equal(2, _requests.Count));
         using var doc = JsonDocument.Parse(_requests[1].Body);
@@ -213,7 +216,7 @@ public sealed class MeetingFormDialogTests : BunitContext, IAsyncLifetime
         var provider = await OpenAsync(NineToTen);
         provider.FindAll("input")[0].Input("جلسه");
 
-        ClickSave(provider);
+        await ClickSave(provider);
 
         provider.WaitForAssertion(() => Assert.Contains("عملیات انجام نشد", provider.Markup, StringComparison.Ordinal));
         Assert.DoesNotContain("secret", provider.Markup, StringComparison.Ordinal);
@@ -228,7 +231,7 @@ public sealed class MeetingFormDialogTests : BunitContext, IAsyncLifetime
 
         provider.WaitForAssertion(() => Assert.Equal("قدیمی", provider.FindAll("input")[0].GetAttribute("value")));
         provider.FindAll("input")[0].Input("جدید");
-        ClickSave(provider);
+        await ClickSave(provider);
 
         provider.WaitForAssertion(() => Assert.Equal(2, _requests.Count));
         Assert.Equal(HttpMethod.Put, _requests[1].Method);

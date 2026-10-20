@@ -95,6 +95,11 @@ public sealed class AuditingAuthorizationResultHandler : IAuthorizationMiddlewar
         ArgumentNullException.ThrowIfNull(context);
         ArgumentNullException.ThrowIfNull(authorizeResult);
 
+        if (authorizeResult.Forbidden)
+        {
+            Application.Telemetry.KscTelemetry.AuthorizationDenied.Add(1);
+        }
+
         if (authorizeResult.Forbidden && context.RequestServices.GetService<IAuditLog>() is { } audit)
         {
             var (actorType, actorId) = AuditedAttribute.ActorOf(context.User);

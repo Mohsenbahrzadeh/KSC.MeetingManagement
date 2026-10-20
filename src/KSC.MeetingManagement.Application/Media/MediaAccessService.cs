@@ -37,8 +37,17 @@ public sealed class MediaAccessService(
     /// <summary>Room name for a meeting. Includes the tenant so rooms of different organisations can never collide.</summary>
     public static string RoomName(Guid tenantId, Guid meetingId) => $"ksc-{tenantId:N}-{meetingId:N}";
 
+    private static MediaJoinResult Counted(MediaJoinResult result)
+    {
+        Telemetry.KscTelemetry.RoomJoins.Add(1, new KeyValuePair<string, object?>("outcome", result.Outcome.ToString()));
+        return result;
+    }
+
     /// <summary>An authenticated organisation member joins: the organizer as host, an invited internal participant as participant.</summary>
-    public async Task<MediaJoinResult> JoinAsync(Guid meetingId, string? displayName, CancellationToken cancellationToken)
+    public async Task<MediaJoinResult> JoinAsync(Guid meetingId, string? displayName, CancellationToken cancellationToken) =>
+        Counted(await JoinCoreAsync(meetingId, displayName, cancellationToken));
+
+    private async Task<MediaJoinResult> JoinCoreAsync(Guid meetingId, string? displayName, CancellationToken cancellationToken)
     {
         if (await meetings.GetAsync(meetingId, cancellationToken) is not { } meeting)
         {
@@ -72,7 +81,10 @@ public sealed class MediaAccessService(
     /// <summary>
     /// A guest enters with the one-time invitation token. Any invalid, expired or revoked invitation gets the same refusal.
     /// </summary>
-    public async Task<MediaJoinResult> JoinGuestAsync(Guid meetingId, Guid participantId, string? invitationToken, CancellationToken cancellationToken)
+    public async Task<MediaJoinResult> JoinGuestAsync(Guid meetingId, Guid participantId, string? invitationToken, CancellationToken cancellationToken) =>
+        Counted(await JoinGuestCoreAsync(meetingId, participantId, invitationToken, cancellationToken));
+
+    private async Task<MediaJoinResult> JoinGuestCoreAsync(Guid meetingId, Guid participantId, string? invitationToken, CancellationToken cancellationToken)
     {
         if (await meetings.GetAsync(meetingId, cancellationToken) is not { } meeting)
         {
