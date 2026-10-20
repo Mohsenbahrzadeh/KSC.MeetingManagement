@@ -231,4 +231,43 @@ public sealed class MeetingsApiTests : IClassFixture<WebApplicationFactory<Progr
         Assert.Equal(HttpStatusCode.Forbidden, asParticipant.StatusCode);
         Assert.Equal(HttpStatusCode.NotFound, otherTenant.StatusCode);
     }
+
+    private async Task<string?> CreateNumbered(Tenant tenant, Guid user)
+    {
+        var response = await Send(HttpMethod.Post, "/api/v1/meetings", tenant, user, NewMeeting());
+        Assert.True(response.IsSuccessStatusCode, await response.Content.ReadAsStringAsync());
+        return (await response.Content.ReadFromJsonAsync<MeetingDto>(Json))!.Number;
+    }
+
+    [Fact]
+    public async Task Concurrent_creates_get_distinct_numbers()
+    {
+        var numbers = await Task.WhenAll(Enumerable.Range(0, 20).Select(_ => CreateNumbered(_tenantA, _organizerA)));
+
+        Assert.All(numbers, n => Assert.Matches(@"^\d{4}-\d{4}$", n!));
+        Assert.Equal(20, numbers.Distinct().Count());
+    }
+
+    [Fact]
+    public async Task Numbers_are_sequential_per_tenant_and_not_shared()
+    {
+        var a1 = await CreateNumbered(_tenantA, _organizerA);
+        var a2 = await CreateNumbered(_tenantA, _organizerA);
+        var b1 = await CreateNumbered(_tenantB, _organizerB);
+
+        Assert.NotEqual(a1, a2);
+        Assert.EndsWith("-0001", a1);
+        Assert.EndsWith("-0002", a2);
+        Assert.EndsWith("-0001", b1);
+    }
+
+    [Fact]
+    public async Task Repeated_create_with_same_id_keeps_the_original_number()
+    {
+        var id = Guid.NewGuid();
+        var first = await (await Send(HttpMethod.Post, "/api/v1/meetings", _tenantA, _organizerA, NewMeeting(id))).Content.ReadFromJsonAsync<MeetingDto>(Json);
+        var second = await (await Send(HttpMethod.Post, "/api/v1/meetings", _tenantA, _organizerA, NewMeeting(id))).Content.ReadFromJsonAsync<MeetingDto>(Json);
+
+        Assert.Equal(first!.Number, second!.Number);
+    }
 }

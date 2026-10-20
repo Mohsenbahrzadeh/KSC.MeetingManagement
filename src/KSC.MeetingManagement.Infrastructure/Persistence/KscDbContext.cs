@@ -8,6 +8,8 @@ public sealed class KscDbContext(DbContextOptions<KscDbContext> options, ITenant
 {
     public DbSet<Meeting> Meetings => Set<Meeting>();
 
+    public DbSet<MeetingNumberCounter> NumberCounters => Set<MeetingNumberCounter>();
+
     public DbSet<MeetingParticipant> Participants => Set<MeetingParticipant>();
 
     // Evaluated per context instance. Guid.Empty (no tenant resolved) matches nothing.
@@ -29,11 +31,20 @@ public sealed class KscDbContext(DbContextOptions<KscDbContext> options, ITenant
             b.Property(m => m.Mode).HasConversion<string>().HasMaxLength(20);
             b.Property(m => m.Status).HasConversion<string>().HasMaxLength(20);
             b.Property(m => m.Version).IsConcurrencyToken();
+            b.Property(m => m.Number).HasMaxLength(32);
+            b.HasIndex(m => new { m.TenantId, m.Number }).IsUnique();
             b.HasIndex(m => new { m.TenantId, m.StartUtc });
             b.HasIndex(m => new { m.TenantId, m.Status });
 
             // Defence in depth: tenant filtering never replaces authorization checks.
             b.HasQueryFilter(m => m.TenantId == CurrentTenantId);
+        });
+
+        modelBuilder.Entity<MeetingNumberCounter>(b =>
+        {
+            b.ToTable("meeting_number_counters");
+            b.HasKey(c => new { c.TenantId, c.Year });
+            b.Property(c => c.LastValue).IsConcurrencyToken();
         });
 
         modelBuilder.Entity<MeetingParticipant>(b =>
