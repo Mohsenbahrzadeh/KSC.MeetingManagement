@@ -8,6 +8,8 @@ public sealed class KscDbContext(DbContextOptions<KscDbContext> options, ITenant
 {
     public DbSet<Meeting> Meetings => Set<Meeting>();
 
+    public DbSet<AgendaItem> AgendaItems => Set<AgendaItem>();
+
     public DbSet<MeetingAttachment> Attachments => Set<MeetingAttachment>();
 
     public DbSet<Committee> Committees => Set<Committee>();
@@ -35,6 +37,7 @@ public sealed class KscDbContext(DbContextOptions<KscDbContext> options, ITenant
             b.Property(m => m.Mode).HasConversion<string>().HasMaxLength(20);
             b.Property(m => m.Status).HasConversion<string>().HasMaxLength(20);
             b.Property(m => m.Version).IsConcurrencyToken();
+            b.Property(m => m.AgendaRevision).IsConcurrencyToken();
             b.Property(m => m.Number).HasMaxLength(32);
             b.HasIndex(m => new { m.TenantId, m.Number }).IsUnique();
             b.HasIndex(m => new { m.TenantId, m.StartUtc });
@@ -42,6 +45,19 @@ public sealed class KscDbContext(DbContextOptions<KscDbContext> options, ITenant
 
             // Defence in depth: tenant filtering never replaces authorization checks.
             b.HasQueryFilter(m => m.TenantId == CurrentTenantId);
+        });
+
+        modelBuilder.Entity<AgendaItem>(b =>
+        {
+            b.ToTable("agenda_items");
+            b.HasKey(i => i.Id);
+            b.Property(i => i.TenantId).IsRequired();
+            b.Property(i => i.MeetingId).IsRequired();
+            b.Property(i => i.Order);
+            b.Property(i => i.Title).HasMaxLength(AgendaItem.MaxTitleLength).IsRequired();
+            b.Property(i => i.Description).HasMaxLength(AgendaItem.MaxDescriptionLength);
+            b.HasIndex(i => new { i.TenantId, i.MeetingId, i.Order });
+            b.HasQueryFilter(i => i.TenantId == CurrentTenantId);
         });
 
         modelBuilder.Entity<MeetingAttachment>(b =>
