@@ -43,6 +43,38 @@ public sealed class EfMeetingRepository(KscDbContext db) : IMeetingRepository
             .ToListAsync(cancellationToken);
     }
 
+    public async Task<IReadOnlyList<MeetingConflict>> FindConflictsAsync(
+        IReadOnlyCollection<Guid> userIds, DateTimeOffset startUtc, DateTimeOffset endUtc, Guid? excludeMeetingId, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(userIds);
+        if (userIds.Count == 0)
+        {
+            return [];
+        }
+
+        var users = userIds.ToList();
+        var active = db.Meetings.AsNoTracking().Where(m =>
+            (m.Status == MeetingStatus.Scheduled || m.Status == MeetingStatus.InProgress)
+            && m.StartUtc < endUtc && m.EndUtc > startUtc
+            && (excludeMeetingId == null || m.Id != excludeMeetingId));
+
+        var asOrganizer = await active
+            .Where(m => users.Contains(m.OrganizerId))
+            .Select(m => new MeetingConflict(m.Id, m.Number, m.Title, m.StartUtc!.Value, m.EndUtc!.Value, m.OrganizerId))
+            .ToListAsync(cancellationToken);
+
+        var asParticipant = await active
+            .Join(
+                db.Participants.Where(p => p.UserId != null && users.Contains(p.UserId.Value)
+                    && (p.Status == InvitationStatus.Invited || p.Status == InvitationStatus.Accepted)),
+                m => m.Id,
+                p => p.MeetingId,
+                (m, p) => new MeetingConflict(m.Id, m.Number, m.Title, m.StartUtc!.Value, m.EndUtc!.Value, p.UserId!.Value))
+            .ToListAsync(cancellationToken);
+
+        return asOrganizer.Concat(asParticipant).Distinct().OrderBy(c => c.StartUtc).ToList();
+    }
+
     public async Task AddAsync(Meeting meeting, CancellationToken cancellationToken) =>
         await db.Meetings.AddAsync(meeting, cancellationToken);
 

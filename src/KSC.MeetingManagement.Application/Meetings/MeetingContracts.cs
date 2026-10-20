@@ -8,7 +8,8 @@ public sealed record CreateMeetingCommand(
     string? Description,
     MeetingMode Mode,
     DateTimeOffset? Start,
-    DateTimeOffset? End);
+    DateTimeOffset? End,
+    bool AllowConflicts = false);
 
 public sealed record MeetingQuery(
     DateTimeOffset? From,
@@ -42,7 +43,18 @@ public sealed record UpdateMeetingCommand(
     string? Description,
     MeetingMode Mode,
     DateTimeOffset? Start,
-    DateTimeOffset? End);
+    DateTimeOffset? End,
+    bool AllowConflicts = false);
+
+/// <summary>An existing meeting that overlaps a requested time for a person who would attend both.</summary>
+public sealed record MeetingConflict(Guid MeetingId, string? Number, string Title, DateTimeOffset StartUtc, DateTimeOffset EndUtc, Guid UserId);
+
+/// <summary>Thrown when the requested time overlaps another active meeting of the organizer or a participant.</summary>
+public sealed class MeetingTimeConflictException(IReadOnlyList<MeetingConflict> conflicts)
+    : InvalidOperationException("The requested time overlaps another meeting.")
+{
+    public IReadOnlyList<MeetingConflict> Conflicts { get; } = conflicts;
+}
 
 /// <summary>Thrown when the meeting was changed by someone else since the caller last read it.</summary>
 public sealed class MeetingConcurrencyException : InvalidOperationException
@@ -68,6 +80,13 @@ public interface IMeetingRepository
     Task<IReadOnlyList<Meeting>> ListAsync(MeetingQuery query, CancellationToken cancellationToken);
 
     Task AddAsync(Meeting meeting, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Active (scheduled or in progress) meetings of the current tenant that overlap [start, end) and where one of the
+    /// users is the organizer or a non-revoked internal participant. Touching ends do not overlap.
+    /// </summary>
+    Task<IReadOnlyList<MeetingConflict>> FindConflictsAsync(
+        IReadOnlyCollection<Guid> userIds, DateTimeOffset startUtc, DateTimeOffset endUtc, Guid? excludeMeetingId, CancellationToken cancellationToken);
 
     /// <summary>
     /// Assigns the next number of the given year in the current tenant and saves the meeting atomically.

@@ -1,10 +1,16 @@
 using KSC.MeetingManagement.Application.Identity;
+using KSC.MeetingManagement.Application.Participants;
 using KSC.MeetingManagement.Application.Tenants;
 using KSC.MeetingManagement.Domain.Meetings;
 
 namespace KSC.MeetingManagement.Application.Meetings;
 
-public sealed class MeetingService(IMeetingRepository repository, ITenantContext tenant, ICurrentUser user, TimeProvider clock)
+public sealed class MeetingService(
+    IMeetingRepository repository,
+    IParticipantRepository participants,
+    ITenantContext tenant,
+    ICurrentUser user,
+    TimeProvider clock)
 {
     public const int MaxPageSize = 200;
 
@@ -40,6 +46,10 @@ public sealed class MeetingService(IMeetingRepository repository, ITenantContext
         if (command.Start is { } start && command.End is { } end)
         {
             meeting.Schedule(start, end);
+            if (!command.AllowConflicts)
+            {
+                await EnsureNoConflictsAsync(meeting, [meeting.OrganizerId], cancellationToken);
+            }
         }
 
         await repository.AddNumberedAsync(meeting, clock.GetUtcNow().Year, cancellationToken);
@@ -63,7 +73,7 @@ public sealed class MeetingService(IMeetingRepository repository, ITenantContext
             {
                 meeting.Schedule(start, end);
             }
-        }, cancellationToken);
+        }, cancellationToken, command.AllowConflicts ? null : EnsureNoConflictsForAttendeesAsync);
     }
 
     public Task<MeetingDto?> CancelAsync(Guid id, long expectedVersion, string reason, CancellationToken cancellationToken) =>
@@ -72,7 +82,12 @@ public sealed class MeetingService(IMeetingRepository repository, ITenantContext
     public Task<MeetingDto?> PostponeAsync(Guid id, long expectedVersion, CancellationToken cancellationToken) =>
         MutateAsync(id, expectedVersion, m => m.Postpone(), cancellationToken);
 
-    private async Task<MeetingDto?> MutateAsync(Guid id, long expectedVersion, Action<Meeting> change, CancellationToken cancellationToken)
+    private async Task<MeetingDto?> MutateAsync(
+        Guid id,
+        long expectedVersion,
+        Action<Meeting> change,
+        CancellationToken cancellationToken,
+        Func<Meeting, CancellationToken, Task>? validate = null)
     {
         if (await repository.GetAsync(id, cancellationToken) is not { } meeting)
         {
@@ -85,8 +100,43 @@ public sealed class MeetingService(IMeetingRepository repository, ITenantContext
         }
 
         change(meeting);
+        if (validate is not null)
+        {
+            await validate(meeting, cancellationToken);
+        }
+
         await repository.SaveChangesAsync(cancellationToken);
         return MeetingDto.From(meeting);
+    }
+
+    private async Task EnsureNoConflictsForAttendeesAsync(Meeting meeting, CancellationToken cancellationToken)
+    {
+        if (meeting.StartUtc is null)
+        {
+            return;
+        }
+
+        var attendees = (await participants.ListAsync(meeting.Id, cancellationToken))
+            .Where(p => p.UserId is not null && p.Status is InvitationStatus.Invited or InvitationStatus.Accepted)
+            .Select(p => p.UserId!.Value)
+            .Append(meeting.OrganizerId)
+            .Distinct()
+            .ToList();
+        await EnsureNoConflictsAsync(meeting, attendees, cancellationToken);
+    }
+
+    private async Task EnsureNoConflictsAsync(Meeting meeting, IReadOnlyCollection<Guid> userIds, CancellationToken cancellationToken)
+    {
+        if (meeting.StartUtc is not { } start || meeting.EndUtc is not { } end)
+        {
+            return;
+        }
+
+        var conflicts = await repository.FindConflictsAsync(userIds, start, end, meeting.Id, cancellationToken);
+        if (conflicts.Count > 0)
+        {
+            throw new MeetingTimeConflictException(conflicts);
+        }
     }
 
     public async Task<MeetingDto?> GetAsync(Guid id, CancellationToken cancellationToken) =>

@@ -15,9 +15,9 @@ public sealed class ParticipantService(
     public static readonly TimeSpan MaxInviteLifetime = TimeSpan.FromDays(30);
 
     /// <summary>Adds a tenant member to the meeting. Returns null if the meeting does not exist.</summary>
-    public async Task<ParticipantDto?> AddInternalAsync(Guid meetingId, Guid userId, CancellationToken cancellationToken)
+    public async Task<ParticipantDto?> AddInternalAsync(Guid meetingId, Guid userId, bool allowConflicts, CancellationToken cancellationToken)
     {
-        if (!await MeetingExistsAsync(meetingId, cancellationToken))
+        if (await meetings.GetAsync(meetingId, cancellationToken) is not { } meeting)
         {
             return null;
         }
@@ -30,6 +30,15 @@ public sealed class ParticipantService(
         if (await participants.HasInternalAsync(meetingId, userId, cancellationToken))
         {
             throw new MeetingDomainException("The user is already a participant.");
+        }
+
+        if (!allowConflicts && meeting is { StartUtc: { } start, EndUtc: { } end, Status: MeetingStatus.Scheduled or MeetingStatus.InProgress })
+        {
+            var conflicts = await meetings.FindConflictsAsync([userId], start, end, meetingId, cancellationToken);
+            if (conflicts.Count > 0)
+            {
+                throw new MeetingTimeConflictException(conflicts);
+            }
         }
 
         var participant = MeetingParticipant.Internal(Guid.NewGuid(), tenant.RequiredTenantId, meetingId, userId);
