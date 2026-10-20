@@ -1,7 +1,10 @@
+using KSC.MeetingManagement.Api.Authorization;
 using KSC.MeetingManagement.Api.Observability;
 using KSC.MeetingManagement.Api.Tenancy;
+using KSC.MeetingManagement.Application.Identity;
 using KSC.MeetingManagement.Application.Tenants;
 using KSC.MeetingManagement.Infrastructure.Tenants;
+using Microsoft.AspNetCore.Authorization;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -19,6 +22,13 @@ builder.Services.AddScoped<ITenantContextSetter>(sp => sp.GetRequiredService<Ten
 builder.Services.AddSingleton<InMemoryTenantStore>();
 builder.Services.AddSingleton<ITenantStore>(sp => sp.GetRequiredService<InMemoryTenantStore>());
 
+builder.Services.AddSingleton<InMemoryMembershipStore>();
+builder.Services.AddSingleton<IMembershipStore>(sp => sp.GetRequiredService<InMemoryMembershipStore>());
+builder.Services.AddAuthentication();
+builder.Services.AddAuthorization();
+builder.Services.AddSingleton<IAuthorizationPolicyProvider, PermissionPolicyProvider>();
+builder.Services.AddScoped<IAuthorizationHandler, PermissionHandler>();
+
 var app = builder.Build();
 
 app.UseMiddleware<CorrelationIdMiddleware>();
@@ -32,6 +42,7 @@ if (app.Environment.IsDevelopment())
 app.UseHttpsRedirection();
 app.UseRouting();
 app.UseMiddleware<TenantResolutionMiddleware>();
+app.UseAuthentication();
 app.UseAuthorization();
 app.MapControllers();
 
