@@ -61,11 +61,32 @@ public sealed class Meeting
     public DateTimeOffset? EndUtc { get; private set; }
     public string? CancellationReason { get; private set; }
 
+    /// <summary>Human-readable number unique within the tenant (for example 2026-0007); assigned once at creation.</summary>
+    public string? Number { get; private set; }
+
     /// <summary>Incremented on every change; used for optimistic concurrency.</summary>
     public long Version { get; private set; }
 
     public static bool CanTransition(MeetingStatus from, MeetingStatus to) =>
         Transitions.TryGetValue(from, out var allowed) && allowed.Contains(to);
+
+    public void AssignNumber(string number)
+    {
+        if (Number is not null)
+        {
+            throw new MeetingDomainException("The meeting already has a number.");
+        }
+
+        if (string.IsNullOrWhiteSpace(number))
+        {
+            throw new MeetingDomainException("Meeting number is required.");
+        }
+
+        Number = number;
+    }
+
+    /// <summary>Used only to retry number assignment after a lost race, before the meeting is persisted.</summary>
+    public void ClearNumber() => Number = null;
 
     public void UpdateDetails(string title, string? description, MeetingMode mode)
     {

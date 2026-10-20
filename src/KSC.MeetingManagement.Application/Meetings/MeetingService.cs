@@ -4,7 +4,7 @@ using KSC.MeetingManagement.Domain.Meetings;
 
 namespace KSC.MeetingManagement.Application.Meetings;
 
-public sealed class MeetingService(IMeetingRepository repository, ITenantContext tenant, ICurrentUser user)
+public sealed class MeetingService(IMeetingRepository repository, ITenantContext tenant, ICurrentUser user, TimeProvider clock)
 {
     public const int MaxPageSize = 200;
 
@@ -39,8 +39,7 @@ public sealed class MeetingService(IMeetingRepository repository, ITenantContext
             meeting.Schedule(start, end);
         }
 
-        await repository.AddAsync(meeting, cancellationToken);
-        await repository.SaveChangesAsync(cancellationToken);
+        await repository.AddNumberedAsync(meeting, clock.GetUtcNow().Year, cancellationToken);
         return new CreateMeetingResult(MeetingDto.From(meeting), Created: true);
     }
 

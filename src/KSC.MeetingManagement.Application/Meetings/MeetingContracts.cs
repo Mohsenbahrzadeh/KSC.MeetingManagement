@@ -26,12 +26,13 @@ public sealed record MeetingDto(
     DateTimeOffset? StartUtc,
     DateTimeOffset? EndUtc,
     Guid OrganizerId,
-    long Version)
+    long Version,
+    string? Number = null)
 {
     public static MeetingDto From(Meeting m)
     {
         ArgumentNullException.ThrowIfNull(m);
-        return new(m.Id, m.Title, m.Description, m.Mode, m.Status, m.StartUtc, m.EndUtc, m.OrganizerId, m.Version);
+        return new(m.Id, m.Title, m.Description, m.Mode, m.Status, m.StartUtc, m.EndUtc, m.OrganizerId, m.Version, m.Number);
     }
 }
 
@@ -67,6 +68,12 @@ public interface IMeetingRepository
     Task<IReadOnlyList<Meeting>> ListAsync(MeetingQuery query, CancellationToken cancellationToken);
 
     Task AddAsync(Meeting meeting, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Assigns the next number of the given year in the current tenant and saves the meeting atomically.
+    /// Concurrent callers never receive the same number.
+    /// </summary>
+    Task AddNumberedAsync(Meeting meeting, int year, CancellationToken cancellationToken);
 
     Task SaveChangesAsync(CancellationToken cancellationToken);
 }

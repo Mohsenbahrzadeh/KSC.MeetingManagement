@@ -44,6 +44,10 @@ namespace KSC.MeetingManagement.Infrastructure.Persistence.Migrations
                         .HasMaxLength(20)
                         .HasColumnType("character varying(20)");
 
+                    b.Property<string>("Number")
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
                     b.Property<Guid>("OrganizerId")
                         .HasColumnType("uuid");
 
@@ -69,11 +73,31 @@ namespace KSC.MeetingManagement.Infrastructure.Persistence.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("TenantId", "Number")
+                        .IsUnique();
+
                     b.HasIndex("TenantId", "StartUtc");
 
                     b.HasIndex("TenantId", "Status");
 
                     b.ToTable("meetings", (string)null);
+                });
+
+            modelBuilder.Entity("KSC.MeetingManagement.Domain.Meetings.MeetingNumberCounter", b =>
+                {
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("Year")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("LastValue")
+                        .IsConcurrencyToken()
+                        .HasColumnType("integer");
+
+                    b.HasKey("TenantId", "Year");
+
+                    b.ToTable("meeting_number_counters", (string)null);
                 });
 
             modelBuilder.Entity("KSC.MeetingManagement.Domain.Meetings.MeetingParticipant", b =>
