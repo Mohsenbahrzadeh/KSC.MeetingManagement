@@ -20,7 +20,7 @@
 بدون پیکربندی هیچ مبدأ دیگری مجاز نیست (API فقط توسط سرور Web و کلاینت‌های هم‌مبدأ استفاده می‌شود). برای فعال‌سازی: `Cors__AllowedOrigins=https://app.example.org,https://other.example.org` (نشانی کامل بدون مسیر؛ `*` نادیده گرفته می‌شود). متدها: GET/POST/PUT/DELETE.
 
 ## سرصفحه‌ها (API)
-`X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy: no-referrer`, `Content-Security-Policy: default-src 'none'; frame-ancestors 'none'`, `Permissions-Policy` (دوربین/میکروفون/موقعیت/پرداخت غیرفعال)، `Cross-Origin-Resource-Policy: same-site`, `Cache-Control: no-store` (مگر اینکه Endpoint خودش تعیین کند). HSTS در غیر Development. برنامهٔ Web هنوز سرصفحهٔ امنیتی ندارد (R-22).
+`X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy: no-referrer`, `Content-Security-Policy: default-src 'none'; frame-ancestors 'none'`, `Permissions-Policy` (دوربین/میکروفون/موقعیت/پرداخت غیرفعال)، `Cross-Origin-Resource-Policy: same-site`, `Cache-Control: no-store` (مگر اینکه Endpoint خودش تعیین کند). HSTS در غیر Development. برنامهٔ Web هم سرصفحه‌های امنیتی دارد (R-22): CSP با nonce برای import map (اسکریپت فقط از همین سایت)، `X-Frame-Options: DENY`، `nosniff`، `Referrer-Policy`، و `Permissions-Policy` که دوربین/میکروفون را فقط برای همین سایت مجاز می‌کند. `style-src` به‌خاطر MudBlazor `unsafe-inline` دارد (در مرورگر Chromium آزموده شد؛ سایر مرورگرها نه).
 
 ## آزمون‌ها
 `tests/KSC.MeetingManagement.IntegrationTests/SecurityTests.cs`: سرصفحه‌ها در پاسخ‌های 200/401/403/404، محدودیت مهمان و حساس (و تفکیک کاربران)، CORS، شروع‌نشدن با پیکربندی نیمه‌کاره، اسکن Secret در فایل‌ها.

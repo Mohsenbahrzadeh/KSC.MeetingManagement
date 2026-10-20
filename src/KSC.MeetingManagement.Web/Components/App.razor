@@ -1,4 +1,4 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="fa" dir="rtl">
 
 <head>
@@ -9,7 +9,7 @@
     <link rel="stylesheet" href="@Assets["_content/MudBlazor/MudBlazor.min.css"]" />
     <link rel="stylesheet" href="@Assets["_content/KSC.MeetingManagement.Calendar/ksc-calendar.css"]" />
     <link rel="stylesheet" href="@Assets["app.css"]" />
-    <ImportMap />
+    <ImportMap nonce="@Nonce" />
     <link rel="icon" type="image/png" href="favicon.png" />
     <HeadOutlet @rendermode="InteractiveServer" />
 </head>
@@ -22,3 +22,11 @@
 </body>
 
 </html>
+
+@code {
+    [CascadingParameter]
+    private HttpContext? HttpContext { get; set; }
+
+    // Per-request value from WebSecurityHeadersMiddleware; the inline import map is allowed by the content security policy only with it.
+    private string? Nonce => HttpContext?.Items[KSC.MeetingManagement.Web.Security.WebSecurityHeadersMiddleware.NonceKey] as string;
+}
