@@ -1,3 +1,5 @@
+using Microsoft.AspNetCore.RateLimiting;
+using KSC.MeetingManagement.Api.Security;
 using KSC.MeetingManagement.Api.Observability;
 using KSC.MeetingManagement.Api.Authorization;
 using KSC.MeetingManagement.Api.Tenancy;
@@ -70,6 +72,7 @@ public sealed class ParticipantsController(ParticipantService participants, ICur
     }
 
     /// <summary>Guest presents the invitation token. Any failure returns the same 404 so nothing is revealed.</summary>
+    [EnableRateLimiting(SecurityExtensions.GuestPolicy)]
     [HttpPost("{participantId:guid}/redeem")]
     [Audited("participant.redeem", "participant", "meetingId", Guest = true)]
     [AllowAnonymous]
