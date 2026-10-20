@@ -1,3 +1,4 @@
+using KSC.MeetingManagement.Api.Observability;
 using KSC.MeetingManagement.Api.Authorization;
 using KSC.MeetingManagement.Api.Tenancy;
 using KSC.MeetingManagement.Application.Identity;
@@ -28,6 +29,7 @@ public sealed class ParticipantsController(ParticipantService participants, ICur
     public async Task<IActionResult> List(Guid meetingId, CancellationToken cancellationToken) =>
         Ok(await participants.ListAsync(meetingId, cancellationToken));
 
+    [Audited("participant.add-internal", "participant", "meetingId")]
     [HttpPost("internal")]
     [HasPermission(Permissions.MeetingsEdit)]
     public Task<IActionResult> AddInternal(Guid meetingId, AddInternalParticipantRequest request, CancellationToken cancellationToken)
@@ -39,6 +41,7 @@ public sealed class ParticipantsController(ParticipantService participants, ICur
     }
 
     /// <summary>Invites a guest. The raw token is returned once in this response and is never retrievable again.</summary>
+    [Audited("participant.invite-guest", "participant", "meetingId")]
     [HttpPost("guests")]
     [HasPermission(Permissions.MeetingsEdit)]
     public Task<IActionResult> InviteGuest(Guid meetingId, InviteGuestRequest request, CancellationToken cancellationToken)
@@ -49,11 +52,13 @@ public sealed class ParticipantsController(ParticipantService participants, ICur
             : NotFound());
     }
 
+    [Audited("participant.revoke", "participant", "meetingId")]
     [HttpPost("{participantId:guid}/revoke")]
     [HasPermission(Permissions.MeetingsEdit)]
     public async Task<IActionResult> Revoke(Guid meetingId, Guid participantId, CancellationToken cancellationToken) =>
         await participants.RevokeAsync(meetingId, participantId, cancellationToken) is { } dto ? Ok(dto) : NotFound();
 
+    [Audited("participant.respond", "participant", "meetingId")]
     [HttpPost("{participantId:guid}/respond")]
     [HasPermission(Permissions.MeetingsView)]
     public Task<IActionResult> Respond(Guid meetingId, Guid participantId, RespondRequest request, CancellationToken cancellationToken)
@@ -66,6 +71,7 @@ public sealed class ParticipantsController(ParticipantService participants, ICur
 
     /// <summary>Guest presents the invitation token. Any failure returns the same 404 so nothing is revealed.</summary>
     [HttpPost("{participantId:guid}/redeem")]
+    [Audited("participant.redeem", "participant", "meetingId", Guest = true)]
     [AllowAnonymous]
     public async Task<IActionResult> Redeem(Guid meetingId, Guid participantId, RedeemInvitationRequest request, CancellationToken cancellationToken)
     {

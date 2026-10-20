@@ -1,3 +1,4 @@
+using KSC.MeetingManagement.Api.Observability;
 using KSC.MeetingManagement.Api.Authorization;
 using KSC.MeetingManagement.Api.Tenancy;
 using KSC.MeetingManagement.Application.Attachments;
@@ -19,6 +20,7 @@ public sealed class AttachmentsController(AttachmentService attachments) : Contr
     public async Task<IActionResult> List(Guid meetingId, CancellationToken cancellationToken) =>
         Ok(await attachments.ListAsync(meetingId, cancellationToken));
 
+    [Audited("attachment.upload", "attachment", "meetingId")]
     [HttpPost]
     [HasPermission(Permissions.MeetingsEdit)]
     [RequestSizeLimit(RequestLimit)]
@@ -42,6 +44,7 @@ public sealed class AttachmentsController(AttachmentService attachments) : Contr
         }
     }
 
+    [Audited("attachment.download", "attachment", "meetingId")]
     [HttpGet("{attachmentId:guid}")]
     [HasPermission(Permissions.MeetingsView)]
     public async Task<IActionResult> Download(Guid meetingId, Guid attachmentId, CancellationToken cancellationToken)
@@ -55,6 +58,7 @@ public sealed class AttachmentsController(AttachmentService attachments) : Contr
         return File(download.Content, download.ContentType, download.FileName);
     }
 
+    [Audited("attachment.delete", "attachment", "meetingId")]
     [HttpDelete("{attachmentId:guid}")]
     [HasPermission(Permissions.MeetingsEdit)]
     public async Task<IActionResult> Delete(Guid meetingId, Guid attachmentId, CancellationToken cancellationToken) =>

@@ -1,3 +1,4 @@
+using KSC.MeetingManagement.Api.Observability;
 using KSC.MeetingManagement.Api.Authorization;
 using KSC.MeetingManagement.Api.Tenancy;
 using KSC.MeetingManagement.Application.Meetings;
@@ -36,6 +37,7 @@ public sealed record PostponeMeetingRequest(long ExpectedVersion);
 [RequiresTenant]
 public sealed class MeetingsController(MeetingService meetings) : ControllerBase
 {
+    [Audited("meeting.create", "meeting", "id")]
     [HttpPost]
     [HasPermission(Permissions.MeetingsCreate)]
     [ProducesResponseType<MeetingDto>(StatusCodes.Status201Created)]
@@ -69,6 +71,7 @@ public sealed class MeetingsController(MeetingService meetings) : ControllerBase
     public async Task<IActionResult> Get(Guid id, CancellationToken cancellationToken) =>
         await meetings.GetAsync(id, cancellationToken) is { } dto ? Ok(dto) : NotFound();
 
+    [Audited("meeting.update", "meeting", "id")]
     [HttpPut("{id:guid}")]
     [HasPermission(Permissions.MeetingsEdit)]
     public Task<IActionResult> Update(Guid id, UpdateMeetingRequest request, CancellationToken cancellationToken)
@@ -80,6 +83,7 @@ public sealed class MeetingsController(MeetingService meetings) : ControllerBase
             cancellationToken));
     }
 
+    [Audited("meeting.reschedule", "meeting", "id")]
     [HttpPost("{id:guid}/reschedule")]
     [HasPermission(Permissions.MeetingsEdit)]
     public Task<IActionResult> Reschedule(Guid id, RescheduleMeetingRequest request, CancellationToken cancellationToken)
@@ -88,6 +92,7 @@ public sealed class MeetingsController(MeetingService meetings) : ControllerBase
         return Mutate(() => meetings.RescheduleAsync(id, request.ExpectedVersion, request.Start, request.End, request.AllowConflicts, cancellationToken));
     }
 
+    [Audited("meeting.cancel", "meeting", "id")]
     [HttpPost("{id:guid}/cancel")]
     [HasPermission(Permissions.MeetingsCancel)]
     public Task<IActionResult> Cancel(Guid id, CancelMeetingRequest request, CancellationToken cancellationToken)
@@ -96,6 +101,7 @@ public sealed class MeetingsController(MeetingService meetings) : ControllerBase
         return Mutate(() => meetings.CancelAsync(id, request.ExpectedVersion, request.Reason, cancellationToken));
     }
 
+    [Audited("meeting.postpone", "meeting", "id")]
     [HttpPost("{id:guid}/postpone")]
     [HasPermission(Permissions.MeetingsEdit)]
     public Task<IActionResult> Postpone(Guid id, PostponeMeetingRequest request, CancellationToken cancellationToken)

@@ -1,3 +1,4 @@
+using KSC.MeetingManagement.Api.Observability;
 using KSC.MeetingManagement.Api.Authorization;
 using KSC.MeetingManagement.Api.Tenancy;
 using KSC.MeetingManagement.Application.Actions;
@@ -29,6 +30,7 @@ public sealed class ActionsController(ActionItemService actions, IAuthorizationS
     public async Task<IActionResult> ListForMeeting(Guid meetingId, CancellationToken cancellationToken) =>
         await actions.ListForMeetingAsync(meetingId, cancellationToken) is { } list ? Ok(list) : NotFound();
 
+    [Audited("action.create", "action", "meetingId")]
     [HttpPost("api/v1/meetings/{meetingId:guid}/actions")]
     [HasPermission(Permissions.ActionsManage)]
     public async Task<IActionResult> Create(Guid meetingId, ActionItemRequest request, CancellationToken cancellationToken)
@@ -45,6 +47,7 @@ public sealed class ActionsController(ActionItemService actions, IAuthorizationS
         }
     }
 
+    [Audited("action.update", "action", "meetingId")]
     [HttpPut("api/v1/meetings/{meetingId:guid}/actions/{actionId:guid}")]
     [HasPermission(Permissions.ActionsManage)]
     public Task<IActionResult> Update(Guid meetingId, Guid actionId, UpdateActionRequest request, CancellationToken cancellationToken)
@@ -55,6 +58,7 @@ public sealed class ActionsController(ActionItemService actions, IAuthorizationS
     }
 
     /// <summary>The owner (or a manager) starts the action.</summary>
+    [Audited("action.start", "action", "meetingId")]
     [HttpPost("api/v1/meetings/{meetingId:guid}/actions/{actionId:guid}/start")]
     [HasPermission(Permissions.MeetingsView)]
     public Task<IActionResult> Start(Guid meetingId, Guid actionId, ActionVersionRequest request, CancellationToken cancellationToken)
@@ -64,6 +68,7 @@ public sealed class ActionsController(ActionItemService actions, IAuthorizationS
     }
 
     /// <summary>Records completion; allowed for the owner or a manager.</summary>
+    [Audited("action.complete", "action", "meetingId")]
     [HttpPost("api/v1/meetings/{meetingId:guid}/actions/{actionId:guid}/complete")]
     [HasPermission(Permissions.MeetingsView)]
     public Task<IActionResult> Complete(Guid meetingId, Guid actionId, CompleteActionRequest request, CancellationToken cancellationToken)
@@ -72,6 +77,7 @@ public sealed class ActionsController(ActionItemService actions, IAuthorizationS
         return RunAsOwnerOrManager(canManage => actions.CompleteAsync(meetingId, actionId, request.ExpectedLockVersion, request.Note, canManage, cancellationToken));
     }
 
+    [Audited("action.cancel", "action", "meetingId")]
     [HttpPost("api/v1/meetings/{meetingId:guid}/actions/{actionId:guid}/cancel")]
     [HasPermission(Permissions.ActionsManage)]
     public Task<IActionResult> Cancel(Guid meetingId, Guid actionId, CancelActionRequest request, CancellationToken cancellationToken)

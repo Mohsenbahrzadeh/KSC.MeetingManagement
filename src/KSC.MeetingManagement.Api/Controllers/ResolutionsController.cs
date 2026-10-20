@@ -1,3 +1,4 @@
+using KSC.MeetingManagement.Api.Observability;
 using KSC.MeetingManagement.Api.Authorization;
 using KSC.MeetingManagement.Api.Tenancy;
 using KSC.MeetingManagement.Application.Meetings;
@@ -26,6 +27,7 @@ public sealed class ResolutionsController(ResolutionService resolutions) : Contr
     public async Task<IActionResult> List(Guid meetingId, CancellationToken cancellationToken) =>
         await resolutions.ListAsync(meetingId, cancellationToken) is { } list ? Ok(list) : NotFound();
 
+    [Audited("resolution.create", "resolution", "meetingId")]
     [HttpPost]
     [HasPermission(Permissions.MinutesWrite)]
     public async Task<IActionResult> Create(Guid meetingId, CreateResolutionRequest request, CancellationToken cancellationToken)
@@ -43,6 +45,7 @@ public sealed class ResolutionsController(ResolutionService resolutions) : Contr
         }
     }
 
+    [Audited("resolution.edit", "resolution", "meetingId")]
     [HttpPut("{resolutionId:guid}")]
     [HasPermission(Permissions.MinutesWrite)]
     public Task<IActionResult> Edit(Guid meetingId, Guid resolutionId, EditResolutionRequest request, CancellationToken cancellationToken)
@@ -51,6 +54,7 @@ public sealed class ResolutionsController(ResolutionService resolutions) : Contr
         return Run(() => resolutions.EditAsync(meetingId, resolutionId, request.ExpectedLockVersion, request.Text, request.AgendaItemId, cancellationToken));
     }
 
+    [Audited("resolution.adopt", "resolution", "meetingId")]
     [HttpPost("{resolutionId:guid}/adopt")]
     [HasPermission(Permissions.MinutesWrite)]
     public Task<IActionResult> Adopt(Guid meetingId, Guid resolutionId, DecideResolutionRequest request, CancellationToken cancellationToken)
@@ -59,6 +63,7 @@ public sealed class ResolutionsController(ResolutionService resolutions) : Contr
         return Run(() => resolutions.AdoptAsync(meetingId, resolutionId, request.ExpectedLockVersion, cancellationToken));
     }
 
+    [Audited("resolution.reject", "resolution", "meetingId")]
     [HttpPost("{resolutionId:guid}/reject")]
     [HasPermission(Permissions.MinutesWrite)]
     public Task<IActionResult> Reject(Guid meetingId, Guid resolutionId, DecideResolutionRequest request, CancellationToken cancellationToken)
@@ -68,6 +73,7 @@ public sealed class ResolutionsController(ResolutionService resolutions) : Contr
     }
 
     /// <summary>Revoking an adopted resolution needs the approval authority and a reason.</summary>
+    [Audited("resolution.revoke", "resolution", "meetingId")]
     [HttpPost("{resolutionId:guid}/revoke")]
     [HasPermission(Permissions.MinutesApprove)]
     public Task<IActionResult> Revoke(Guid meetingId, Guid resolutionId, RevokeResolutionRequest request, CancellationToken cancellationToken)

@@ -7,6 +7,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using KSC.MeetingManagement.Application.Actions;
 using KSC.MeetingManagement.Application.Agenda;
+using KSC.MeetingManagement.Application.Audit;
 using KSC.MeetingManagement.Application.Attachments;
 using KSC.MeetingManagement.Application.Committees;
 using KSC.MeetingManagement.Application.Minutes;
@@ -73,6 +74,10 @@ public static class PersistenceExtensions
             configuration["Storage:Root"] ?? Path.Combine(AppContext.BaseDirectory, "App_Data", "files")));
         services.AddScoped<AttachmentService>();
         services.AddKscMedia(configuration);
+        services.AddScoped<EfAuditLog>();
+        services.AddScoped<IAuditLog>(sp => sp.GetRequiredService<EfAuditLog>());
+        services.AddScoped<IAuditQuery>(sp => sp.GetRequiredService<EfAuditLog>());
+        services.AddScoped<AuditQueryService>();
         services.AddScoped<IActionItemRepository, EfActionItemRepository>();
         services.AddScoped<ActionItemService>();
         services.AddScoped<IResolutionRepository, EfResolutionRepository>();
