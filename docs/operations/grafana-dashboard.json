@@ -1,0 +1,50 @@
+{
+  "title": "KSC Meeting Management",
+  "uid": "ksc-meetings",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "30s",
+  "time": { "from": "now-6h", "to": "now" },
+  "templating": { "list": [ { "name": "datasource", "type": "datasource", "query": "prometheus" } ] },
+  "panels": [
+    {
+      "id": 1, "type": "timeseries", "title": "Requests / s", "gridPos": { "x": 0, "y": 0, "w": 12, "h": 8 },
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "targets": [ { "expr": "sum(rate(http_server_request_duration_count[5m]))", "legendFormat": "all" } ]
+    },
+    {
+      "id": 2, "type": "timeseries", "title": "5xx rate", "gridPos": { "x": 12, "y": 0, "w": 12, "h": 8 },
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "targets": [ { "expr": "sum(rate(http_server_request_duration_count{http_response_status_code=~\"5..\"}[5m]))", "legendFormat": "5xx" } ]
+    },
+    {
+      "id": 3, "type": "timeseries", "title": "Mean response time (s)", "gridPos": { "x": 0, "y": 8, "w": 12, "h": 8 },
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "targets": [ { "expr": "sum(rate(http_server_request_duration_sum[5m])) / sum(rate(http_server_request_duration_count[5m]))", "legendFormat": "mean" } ]
+    },
+    {
+      "id": 4, "type": "timeseries", "title": "Room joins by outcome", "gridPos": { "x": 12, "y": 8, "w": 12, "h": 8 },
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "targets": [ { "expr": "sum by (outcome) (increase(ksc_room_joins_total[10m]))", "legendFormat": "{{outcome}}" } ]
+    },
+    {
+      "id": 5, "type": "timeseries", "title": "Rate limited / denied", "gridPos": { "x": 0, "y": 16, "w": 12, "h": 8 },
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "targets": [
+        { "expr": "increase(ksc_requests_rate_limited_total[10m])", "legendFormat": "rate limited" },
+        { "expr": "increase(ksc_authorization_denied_total[10m])", "legendFormat": "authorization denied" }
+      ]
+    },
+    {
+      "id": 6, "type": "stat", "title": "Audit write failures (1h)", "gridPos": { "x": 12, "y": 16, "w": 6, "h": 8 },
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "targets": [ { "expr": "sum(increase(ksc_audit_failures_total[1h]))" } ],
+      "fieldConfig": { "defaults": { "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": null }, { "color": "red", "value": 1 } ] } } }
+    },
+    {
+      "id": 7, "type": "timeseries", "title": "Process memory (bytes)", "gridPos": { "x": 18, "y": 16, "w": 6, "h": 8 },
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "targets": [ { "expr": "dotnet_process_memory_working_set", "legendFormat": "working set" } ]
+    }
+  ]
+}

@@ -35,6 +35,7 @@ public static class SecurityExtensions
                     context.HttpContext.Response.Headers.RetryAfter = ((int)Math.Ceiling(retryAfter.TotalSeconds)).ToString(CultureInfo.InvariantCulture);
                 }
 
+                Application.Telemetry.KscTelemetry.RateLimited.Add(1);
                 context.HttpContext.Response.StatusCode = StatusCodes.Status429TooManyRequests;
                 await context.HttpContext.Response.WriteAsJsonAsync(
                     new { title = "تعداد درخواست‌ها زیاد است", status = 429, detail = "لطفاً کمی بعد دوباره تلاش کنید." },
