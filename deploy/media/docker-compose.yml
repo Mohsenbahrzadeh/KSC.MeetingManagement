@@ -1,0 +1,19 @@
+# Media stack for the proof of concept (TASK-043, TASK-044). NOT TESTED: Docker was not available where this was written.
+# Image tags are placeholders on purpose: pin exact versions (never "latest") after checking licences (ADR-0004).
+services:
+  livekit:
+    image: ${LIVEKIT_IMAGE:?set LIVEKIT_IMAGE to a pinned livekit/livekit-server tag}
+    command: ["--config", "/etc/livekit.yaml"]
+    network_mode: host            # recommended by LiveKit for WebRTC; opens 7880, 7881 and the UDP range
+    restart: unless-stopped
+    volumes:
+      - ./livekit.rendered.yaml:/etc/livekit.yaml:ro
+
+  coturn:
+    image: ${COTURN_IMAGE:?set COTURN_IMAGE to a pinned coturn/coturn tag}
+    network_mode: host            # relay port range must be reachable without NAT mapping
+    restart: unless-stopped
+    command: ["-c", "/etc/coturn/turnserver.conf"]
+    volumes:
+      - ./turnserver.rendered.conf:/etc/coturn/turnserver.conf:ro
+      - ${TLS_CERT_DIR:?directory with fullchain.pem and privkey.pem}:/certs:ro

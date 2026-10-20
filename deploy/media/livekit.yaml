@@ -1,0 +1,24 @@
+# LiveKit server configuration (TASK-043). Values in ${...} are filled by docker compose from .env
+# (compose does not expand them inside mounted files, so run scripts/render-config.sh first).
+# NOT TESTED on a real host - see deploy/media/README.md.
+port: 7880
+log_level: info
+
+rtc:
+  tcp_port: 7881
+  port_range_start: 50000
+  port_range_end: 60000
+  use_external_ip: true
+
+keys:
+  ${LIVEKIT_API_KEY}: ${LIVEKIT_API_SECRET}
+
+# Events used for attendance (TASK-053). The API verifies the signature with the same key and secret.
+webhook:
+  api_key: ${LIVEKIT_API_KEY}
+  urls:
+    - ${API_PUBLIC_URL}/api/v1/media/webhook
+
+# The built-in TURN is off: relay is provided by the separate coturn service (ADR-0004).
+turn:
+  enabled: false
