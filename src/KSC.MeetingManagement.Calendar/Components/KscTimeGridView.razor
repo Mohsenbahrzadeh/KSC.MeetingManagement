@@ -28,13 +28,19 @@
                     <button type="button"
                             class="ksc-grid-slot"
                             aria-label="جلسه جدید @PersianText.FormatLong(day, Calendar) ساعت @PersianText.Time(new TimeOnly(slotHour, 0))"
+                            @ondragover="() => { }"
+                            @ondragover:preventDefault="@(Drag?.Item is not null)"
+                            @ondrop="() => Drop(day, slotHour)"
                             @onclick="() => SelectSlot(day, slotHour)"></button>
                 }
                 @foreach (var p in Layout.PlaceOn(Items, day))
                 {
                     <button type="button"
-                            class="ksc-event @CalendarStatusText.CssClass(p.Item.Status) @(p.ContinuesBefore ? "continues-before" : "") @(p.ContinuesAfter ? "continues-after" : "")"
+                            class="ksc-event @(p.Item.Id == PendingId ? "is-pending" : "") @CalendarStatusText.CssClass(p.Item.Status) @(p.ContinuesBefore ? "continues-before" : "") @(p.ContinuesAfter ? "continues-after" : "")"
                             style="@Style(p)"
+                            draggable="@(Drag is not null && p.Item.IsMovable ? "true" : null)"
+                            @ondragstart="() => StartDrag(p.Item)"
+                            @ondragend="EndDrag"
                             title="@p.Item.Title — @CalendarStatusText.Label(p.Item.Status)"
                             @onclick="() => OnItemSelected.InvokeAsync(p.Item)">
                         <span class="ksc-event-time">@PersianText.Time(Layout.TimeOf(p.Item.StartUtc)) – @PersianText.Time(Layout.TimeOf(p.Item.EndUtc))</span>
@@ -63,6 +69,39 @@
     [Parameter] public EventCallback<CalendarSlot> OnSlotSelected { get; set; }
 
     [Parameter] public EventCallback<JalaliDate> OnDaySelected { get; set; }
+
+    /// <summary>Set to enable dragging movable meetings; shared with the container.</summary>
+    [Parameter] public CalendarDragState? Drag { get; set; }
+
+    [Parameter] public EventCallback<CalendarDrop> OnDrop { get; set; }
+
+    /// <summary>Meeting whose move is awaiting backend confirmation.</summary>
+    [Parameter] public Guid? PendingId { get; set; }
+
+    private void StartDrag(CalendarItem item)
+    {
+        if (Drag is not null && item.IsMovable)
+        {
+            Drag.Item = item;
+        }
+    }
+
+    private void EndDrag()
+    {
+        if (Drag is not null)
+        {
+            Drag.Item = null;
+        }
+    }
+
+    private async Task Drop(JalaliDate day, int hour)
+    {
+        if (Drag?.Item is { } item)
+        {
+            Drag.Item = null;
+            await OnDrop.InvokeAsync(new CalendarDrop(item, day, hour));
+        }
+    }
 
     private static string Style(PlacedItem p)
     {

@@ -373,4 +373,157 @@ public sealed class CalendarViewTests : BunitContext
         Assert.Equal(TimeSpan.FromHours(1), slot.EndUtc - slot.StartUtc);
         Assert.Equal(new TimeOnly(9, 0), Layout.TimeOf(slot.StartUtc));
     }
+
+    // ---- drag and drop ----
+
+    private IRenderedComponent<KscCalendar> RenderMovable(FakeProvider provider, Func<CalendarItem, CalendarSlot, Task<CalendarMoveResult>> mover, CalendarViewMode mode = CalendarViewMode.Month) =>
+        Render<KscCalendar>(p => p
+            .Add(c => c.View, new CalendarView(mode, JalaliDate.Create(1404, 1, 1)))
+            .Add(c => c.Provider, provider)
+            .Add(c => c.TimeZone, Tehran)
+            .Add(c => c.Today, Today)
+            .Add(c => c.OnItemMoved, mover));
+
+    private static AngleSharp.Dom.IElement CellOf(IRenderedComponent<KscCalendar> cut, string label) =>
+        cut.FindAll(".ksc-month-cell").Single(c => c.GetAttribute("aria-label")!.StartsWith(label, StringComparison.Ordinal));
+
+    [Fact]
+    public void Dropping_on_another_day_keeps_time_of_day_and_duration_and_waits_for_the_backend()
+    {
+        var item = Item(Local(3, 22, 9), Local(3, 22, 10, 30), "منتقل");
+        var provider = new FakeProvider { Result = [item] };
+        var pending = new TaskCompletionSource<CalendarMoveResult>();
+        CalendarSlot? asked = null;
+        var cut = RenderMovable(provider, (_, slot) =>
+        {
+            asked = slot;
+            return pending.Task;
+        });
+
+        cut.Find(".ksc-chip").DragStart();
+        CellOf(cut, "۵ فروردین").Drop();
+
+        Assert.Equal(Local(3, 25, 9), asked!.StartUtc);
+        Assert.Equal(TimeSpan.FromMinutes(90), asked.EndUtc - asked.StartUtc);
+        Assert.Contains("منتقل", CellOf(cut, "۲ فروردین").TextContent, StringComparison.Ordinal);
+        Assert.DoesNotContain("منتقل", CellOf(cut, "۵ فروردین").TextContent, StringComparison.Ordinal);
+        Assert.Contains("is-pending", cut.Find(".ksc-chip").ClassName, StringComparison.Ordinal);
+
+        provider.Result = [item with { StartUtc = asked.StartUtc, EndUtc = asked.EndUtc }];
+        pending.SetResult(CalendarMoveResult.Ok);
+
+        cut.WaitForAssertion(() => Assert.Contains("منتقل", CellOf(cut, "۵ فروردین").TextContent, StringComparison.Ordinal));
+        Assert.DoesNotContain("منتقل", CellOf(cut, "۲ فروردین").TextContent, StringComparison.Ordinal);
+        Assert.Contains("زمان جلسه تغییر کرد", cut.Find(".ksc-notice").TextContent, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void A_rejected_move_leaves_the_calendar_unchanged_and_shows_the_reason()
+    {
+        var provider = new FakeProvider { Result = [Item(Local(3, 22, 9), Local(3, 22, 10), "ثابت")] };
+        var cut = RenderMovable(provider, (_, _) => Task.FromResult(CalendarMoveResult.Fail("این زمان با جلسهٔ دیگری تداخل دارد.")));
+        var requestsBefore = provider.Requests.Count;
+
+        cut.Find(".ksc-chip").DragStart();
+        CellOf(cut, "۵ فروردین").Drop();
+
+        cut.WaitForAssertion(() => Assert.Contains("تداخل", cut.Find(".ksc-notice").TextContent, StringComparison.Ordinal));
+        Assert.Equal("alert", cut.Find(".ksc-notice").GetAttribute("role"));
+        Assert.Contains("ثابت", CellOf(cut, "۲ فروردین").TextContent, StringComparison.Ordinal);
+        Assert.DoesNotContain("ثابت", CellOf(cut, "۵ فروردین").TextContent, StringComparison.Ordinal);
+        Assert.Equal(requestsBefore, provider.Requests.Count);
+        Assert.DoesNotContain("is-pending", cut.Find(".ksc-chip").ClassName, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void A_throwing_mover_shows_a_generic_error_without_details()
+    {
+        var provider = new FakeProvider { Result = [Item(Local(3, 22, 9), Local(3, 22, 10), "x")] };
+        var cut = RenderMovable(provider, (_, _) => throw new InvalidOperationException("db password"));
+
+        cut.Find(".ksc-chip").DragStart();
+        CellOf(cut, "۵ فروردین").Drop();
+
+        cut.WaitForAssertion(() => Assert.Contains("ناموفق", cut.Find(".ksc-notice").TextContent, StringComparison.Ordinal));
+        Assert.DoesNotContain("db password", cut.Markup, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Only_movable_meetings_are_draggable_and_only_when_a_mover_is_set()
+    {
+        var provider = new FakeProvider
+        {
+            Result =
+            [
+                Item(Local(3, 22, 9), Local(3, 22, 10), "الف", CalendarItemStatus.Scheduled),
+                Item(Local(3, 22, 11), Local(3, 22, 12), "ب", CalendarItemStatus.Cancelled),
+                Item(Local(3, 22, 13), Local(3, 22, 14), "ج", CalendarItemStatus.InProgress),
+            ],
+        };
+
+        var movable = RenderMovable(provider, (_, _) => Task.FromResult(CalendarMoveResult.Ok));
+        var chips = movable.FindAll(".ksc-chip");
+        var readOnly = RenderCalendar(provider);
+
+        Assert.Equal("true", chips[0].GetAttribute("draggable"));
+        Assert.Null(chips[1].GetAttribute("draggable"));
+        Assert.Null(chips[2].GetAttribute("draggable"));
+        Assert.All(readOnly.FindAll(".ksc-chip"), c => Assert.Null(c.GetAttribute("draggable")));
+    }
+
+    [Fact]
+    public void Dropping_a_cancelled_meeting_does_nothing()
+    {
+        var calls = 0;
+        var provider = new FakeProvider { Result = [Item(Local(3, 22, 9), Local(3, 22, 10), "لغو", CalendarItemStatus.Cancelled)] };
+        var cut = RenderMovable(provider, (_, _) =>
+        {
+            calls++;
+            return Task.FromResult(CalendarMoveResult.Ok);
+        });
+
+        cut.Find(".ksc-chip").DragStart();
+        CellOf(cut, "۵ فروردین").Drop();
+
+        Assert.Equal(0, calls);
+    }
+
+    [Fact]
+    public void Dropping_on_the_same_place_does_not_call_the_backend()
+    {
+        var calls = 0;
+        var provider = new FakeProvider { Result = [Item(Local(3, 22, 9), Local(3, 22, 10), "هم‌جا")] };
+        var cut = RenderMovable(provider, (_, _) =>
+        {
+            calls++;
+            return Task.FromResult(CalendarMoveResult.Ok);
+        });
+
+        cut.Find(".ksc-chip").DragStart();
+        CellOf(cut, "۲ فروردین").Drop();
+
+        Assert.Equal(0, calls);
+    }
+
+    [Fact]
+    public void Dropping_on_an_hour_slot_in_the_week_view_moves_to_that_hour()
+    {
+        var provider = new FakeProvider { Result = [Item(Local(3, 21, 9), Local(3, 21, 10, 30), "ساعتی")] };
+        CalendarSlot? asked = null;
+        var cut = RenderMovable(
+            provider,
+            (_, slot) =>
+            {
+                asked = slot;
+                return Task.FromResult(CalendarMoveResult.Fail("نه"));
+            },
+            CalendarViewMode.Week);
+
+        cut.Find(".ksc-event").DragStart();
+        // Week of 1404/01/01 (Friday) is Sat 25 Esfand to Fri 1 Farvardin; column 5 is Thursday 2025-03-20.
+        cut.FindAll(".ksc-grid-col")[5].QuerySelectorAll(".ksc-grid-slot")[15].Drop();
+
+        Assert.Equal(Local(3, 20, 15), asked!.StartUtc);
+        Assert.Equal(TimeSpan.FromMinutes(90), asked.EndUtc - asked.StartUtc);
+    }
 }

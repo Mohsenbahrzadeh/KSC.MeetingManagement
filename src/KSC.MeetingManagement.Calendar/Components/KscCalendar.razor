@@ -14,6 +14,11 @@
         </select>
     </div>
 
+    @if (_notice is not null)
+    {
+        <div class="ksc-notice @(_notice.Succeeded ? "is-success" : "is-error")" role="@(_notice.Succeeded ? "status" : "alert")">@_notice.Text</div>
+    }
+
     @if (_error is not null)
     {
         <div class="ksc-error" role="alert">
@@ -34,12 +39,14 @@
     {
         case CalendarViewMode.Month:
             <KscMonthView Anchor="View.Anchor" Layout="_layout" Items="_items" Today="@_today" Calendar="Calendar"
-                          OnItemSelected="OnItemSelected" OnSlotSelected="OnSlotSelected" OnDaySelected="OpenDay" />
+                          OnItemSelected="OnItemSelected" OnSlotSelected="OnSlotSelected" OnDaySelected="OpenDay"
+                          Drag="DragState" OnDrop="HandleDrop" PendingId="_pendingId" />
             break;
         case CalendarViewMode.Week:
         case CalendarViewMode.Day:
             <KscTimeGridView Days="_layout.DaysOf(_navigator.VisibleRange(View))" Layout="_layout" Items="_items" Today="@_today" Calendar="Calendar"
-                             OnItemSelected="OnItemSelected" OnSlotSelected="OnSlotSelected" OnDaySelected="OpenDay" />
+                             OnItemSelected="OnItemSelected" OnSlotSelected="OnSlotSelected" OnDaySelected="OpenDay"
+                             Drag="DragState" OnDrop="HandleDrop" PendingId="_pendingId" />
             break;
         default:
             <KscAgendaView Range="_navigator.VisibleRange(View)" Layout="_layout" Items="_items" Today="@_today" Calendar="Calendar"
@@ -60,6 +67,9 @@
     private JalaliDate _today;
     private bool _loading;
     private string? _error;
+    private readonly CalendarDragState _drag = new();
+    private Notice? _notice;
+    private Guid? _pendingId;
     private CalendarView? _loadedView;
     private IMeetingCalendarDataProvider? _loadedProvider;
 
@@ -80,6 +90,14 @@
 
     /// <summary>A slot the user picked for a new meeting (UTC instants, already converted from local time).</summary>
     [Parameter] public EventCallback<CalendarSlot> OnSlotSelected { get; set; }
+
+    /// <summary>
+    /// Asks the backend to move a meeting. When set, movable meetings can be dragged. The calendar changes nothing on
+    /// screen until this returns success, then reloads the visible window so the shown time is the stored one.
+    /// </summary>
+    [Parameter] public Func<CalendarItem, CalendarSlot, Task<CalendarMoveResult>>? OnItemMoved { get; set; }
+
+    private CalendarDragState? DragState => OnItemMoved is null ? null : _drag;
 
     protected override async Task OnParametersSetAsync()
     {
@@ -103,6 +121,47 @@
         if (_loadedView != next)
         {
             await LoadAsync();
+        }
+    }
+
+    private sealed record Notice(bool Succeeded, string Text);
+
+    private async Task HandleDrop(CalendarDrop drop)
+    {
+        if (OnItemMoved is null || !drop.Item.IsMovable || _pendingId is not null)
+        {
+            return;
+        }
+
+        var slot = drop.Hour is { } hour
+            ? _layout.MoveToHour(drop.Item, drop.Day, hour)
+            : _layout.MoveToDay(drop.Item, drop.Day);
+        if (slot.StartUtc == drop.Item.StartUtc)
+        {
+            return;
+        }
+
+        _pendingId = drop.Item.Id;
+        _notice = null;
+        CalendarMoveResult result;
+        try
+        {
+            result = await OnItemMoved(drop.Item, slot);
+        }
+        catch (Exception)
+        {
+            result = CalendarMoveResult.Fail("جابه‌جایی جلسه ناموفق بود.");
+        }
+
+        _pendingId = null;
+        if (result.Succeeded)
+        {
+            _notice = new Notice(true, "زمان جلسه تغییر کرد.");
+            await LoadAsync();
+        }
+        else
+        {
+            _notice = new Notice(false, string.IsNullOrWhiteSpace(result.Error) ? "جابه‌جایی جلسه ناموفق بود." : result.Error);
         }
     }
 

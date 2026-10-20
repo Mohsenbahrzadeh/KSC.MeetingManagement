@@ -131,6 +131,23 @@ public sealed class CalendarLayout(IKscJalaliCalendar calendar, TimeZoneInfo tim
         return new CalendarSlot(start, start + length);
     }
 
+    /// <summary>Moves an item to another day keeping its local start time and its duration.</summary>
+    public CalendarSlot MoveToDay(CalendarItem item, JalaliDate day)
+    {
+        ArgumentNullException.ThrowIfNull(item);
+        return SlotAt(day, TimeOf(item.StartUtc), DurationOf(item));
+    }
+
+    /// <summary>Moves an item to the start of an hour on a day keeping its duration.</summary>
+    public CalendarSlot MoveToHour(CalendarItem item, JalaliDate day, int hour)
+    {
+        ArgumentNullException.ThrowIfNull(item);
+        return SlotAt(day, new TimeOnly(hour, 0), DurationOf(item));
+    }
+
+    private static TimeSpan DurationOf(CalendarItem item) =>
+        item.EndUtc > item.StartUtc ? item.EndUtc - item.StartUtc : TimeSpan.FromHours(1);
+
     private static DateTimeOffset Max(DateTimeOffset a, DateTimeOffset b) => a >= b ? a : b;
 
     private static DateTimeOffset Min(DateTimeOffset a, DateTimeOffset b) => a <= b ? a : b;
