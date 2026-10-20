@@ -9,6 +9,7 @@ public sealed class MeetingService(
     IMeetingRepository repository,
     IParticipantRepository participants,
     Committees.ICommitteeRepository committees,
+    Notifications.NotificationService notifications,
     ITenantContext tenant,
     ICurrentUser user,
     TimeProvider clock)
@@ -78,26 +79,27 @@ public sealed class MeetingService(
             {
                 meeting.Schedule(start, end);
             }
-        }, cancellationToken, command.AllowConflicts ? null : EnsureNoConflictsForAttendeesAsync);
+        }, cancellationToken, command.AllowConflicts ? null : EnsureNoConflictsForAttendeesAsync, NotifyChangedAsync);
     }
 
     /// <summary>Changes only the time (used by drag and drop). Conflicts are checked unless explicitly allowed.</summary>
     public Task<MeetingDto?> RescheduleAsync(
         Guid id, long expectedVersion, DateTimeOffset start, DateTimeOffset end, bool allowConflicts, CancellationToken cancellationToken) =>
-        MutateAsync(id, expectedVersion, m => m.Schedule(start, end), cancellationToken, allowConflicts ? null : EnsureNoConflictsForAttendeesAsync);
+        MutateAsync(id, expectedVersion, m => m.Schedule(start, end), cancellationToken, allowConflicts ? null : EnsureNoConflictsForAttendeesAsync, NotifyChangedAsync);
 
     public Task<MeetingDto?> CancelAsync(Guid id, long expectedVersion, string reason, CancellationToken cancellationToken) =>
-        MutateAsync(id, expectedVersion, m => m.Cancel(reason), cancellationToken);
+        MutateAsync(id, expectedVersion, m => m.Cancel(reason), cancellationToken, afterChange: NotifyCancelledAsync);
 
     public Task<MeetingDto?> PostponeAsync(Guid id, long expectedVersion, CancellationToken cancellationToken) =>
-        MutateAsync(id, expectedVersion, m => m.Postpone(), cancellationToken);
+        MutateAsync(id, expectedVersion, m => m.Postpone(), cancellationToken, afterChange: NotifyChangedAsync);
 
     private async Task<MeetingDto?> MutateAsync(
         Guid id,
         long expectedVersion,
         Action<Meeting> change,
         CancellationToken cancellationToken,
-        Func<Meeting, CancellationToken, Task>? validate = null)
+        Func<Meeting, CancellationToken, Task>? validate = null,
+        Func<Meeting, CancellationToken, Task>? afterChange = null)
     {
         if (await repository.GetAsync(id, cancellationToken) is not { } meeting)
         {
@@ -115,9 +117,22 @@ public sealed class MeetingService(
             await validate(meeting, cancellationToken);
         }
 
+        // Queued in the same unit of work as the change, so the notification is saved or lost together with it.
+        if (afterChange is not null)
+        {
+            await afterChange(meeting, cancellationToken);
+        }
+
         await repository.SaveChangesAsync(cancellationToken);
         return MeetingDto.From(meeting);
     }
+
+    // Participants of a draft are not told about changes; the meeting is not announced yet.
+    private Task NotifyChangedAsync(Meeting meeting, CancellationToken cancellationToken) =>
+        meeting.Status == MeetingStatus.Draft ? Task.CompletedTask : notifications.MeetingChangedAsync(meeting, user.RequiredUserId, cancellationToken);
+
+    private Task NotifyCancelledAsync(Meeting meeting, CancellationToken cancellationToken) =>
+        notifications.MeetingCancelledAsync(meeting, user.RequiredUserId, cancellationToken);
 
     private async Task EnsureNoConflictsForAttendeesAsync(Meeting meeting, CancellationToken cancellationToken)
     {

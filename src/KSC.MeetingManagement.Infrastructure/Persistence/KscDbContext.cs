@@ -1,5 +1,6 @@
 using KSC.MeetingManagement.Application.Tenants;
 using KSC.MeetingManagement.Domain.Audit;
+using KSC.MeetingManagement.Domain.Notifications;
 using KSC.MeetingManagement.Domain.Meetings;
 using Microsoft.EntityFrameworkCore;
 
@@ -8,6 +9,8 @@ namespace KSC.MeetingManagement.Infrastructure.Persistence;
 public sealed class KscDbContext(DbContextOptions<KscDbContext> options, ITenantContext tenant) : DbContext(options)
 {
     public DbSet<Meeting> Meetings => Set<Meeting>();
+
+    public DbSet<OutboxMessage> OutboxMessages => Set<OutboxMessage>();
 
     public DbSet<AuditEvent> AuditEvents => Set<AuditEvent>();
 
@@ -54,6 +57,32 @@ public sealed class KscDbContext(DbContextOptions<KscDbContext> options, ITenant
             b.HasIndex(m => new { m.TenantId, m.Status });
 
             // Defence in depth: tenant filtering never replaces authorization checks.
+            b.HasQueryFilter(m => m.TenantId == CurrentTenantId);
+        });
+
+        modelBuilder.Entity<OutboxMessage>(b =>
+        {
+            b.ToTable("outbox_messages");
+            b.HasKey(m => m.Id);
+            b.Property(m => m.TenantId).IsRequired();
+            b.Property(m => m.Kind).HasConversion<string>().HasMaxLength(30);
+            b.Property(m => m.RecipientType).HasConversion<string>().HasMaxLength(20);
+            b.Property(m => m.RecipientUserId);
+            b.Property(m => m.RecipientAddress).HasMaxLength(320);
+            b.Property(m => m.RecipientName).HasMaxLength(200);
+            b.Property(m => m.Subject).HasMaxLength(200).IsRequired();
+            b.Property(m => m.ProtectedBody).IsRequired();
+            b.Property(m => m.DedupeKey).HasMaxLength(200).IsRequired();
+            b.Property(m => m.CreatedAtUtc);
+            b.Property(m => m.NextAttemptAtUtc);
+            b.Property(m => m.Attempts);
+            b.Property(m => m.Status).HasConversion<string>().HasMaxLength(20);
+            b.Property(m => m.LockedUntilUtc);
+            b.Property(m => m.SentAtUtc);
+            b.Property(m => m.LastError).HasMaxLength(OutboxMessage.MaxErrorLength);
+            b.Property(m => m.ClaimVersion).IsConcurrencyToken();
+            b.HasIndex(m => new { m.TenantId, m.DedupeKey }).IsUnique();
+            b.HasIndex(m => new { m.Status, m.NextAttemptAtUtc });
             b.HasQueryFilter(m => m.TenantId == CurrentTenantId);
         });
 

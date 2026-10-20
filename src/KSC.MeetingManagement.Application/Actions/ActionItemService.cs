@@ -52,6 +52,7 @@ public sealed class ActionItemService(
     IMeetingRepository meetings,
     IResolutionRepository resolutions,
     IMembershipStore memberships,
+    Notifications.NotificationService notifications,
     ITenantContext tenant,
     ICurrentUser user,
     TimeProvider clock)
@@ -110,6 +111,7 @@ public sealed class ActionItemService(
         await EnsureResolutionAsync(meetingId, input.ResolutionId, cancellationToken);
         var item = new ActionItem(Guid.NewGuid(), tenant.RequiredTenantId, meetingId, input.ResolutionId, input.Title, input.Description, input.OwnerUserId, input.DueDate);
         await actions.AddAsync(item, cancellationToken);
+        await notifications.ActionAssignedAsync(item, cancellationToken);
         await actions.SaveChangesAsync(cancellationToken);
         return ActionItemDto.From(item, today);
     }
@@ -121,7 +123,12 @@ public sealed class ActionItemService(
         return ChangeAsync(meetingId, actionId, expectedLockVersion, canManage: true, requireOwnerOrManager: false, async a =>
         {
             await EnsureOwnerAsync(input.OwnerUserId, cancellationToken);
+            var previousOwner = a.OwnerUserId;
             a.Update(input.Title, input.Description, input.OwnerUserId, input.DueDate);
+            if (a.OwnerUserId != previousOwner)
+            {
+                await notifications.ActionAssignedAsync(a, cancellationToken);
+            }
         }, cancellationToken);
     }
 

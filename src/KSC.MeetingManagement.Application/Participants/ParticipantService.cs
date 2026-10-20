@@ -10,6 +10,7 @@ public sealed class ParticipantService(
     IMeetingRepository meetings,
     IMembershipStore memberships,
     ITenantContext tenant,
+    Notifications.NotificationService notifications,
     TimeProvider clock)
 {
     public static readonly TimeSpan MaxInviteLifetime = TimeSpan.FromDays(30);
@@ -43,6 +44,7 @@ public sealed class ParticipantService(
 
         var participant = MeetingParticipant.Internal(Guid.NewGuid(), tenant.RequiredTenantId, meetingId, userId);
         await participants.AddAsync(participant, cancellationToken);
+        await notifications.InvitedAsync(meeting, userId, cancellationToken);
         await participants.SaveChangesAsync(cancellationToken);
         return ParticipantDto.From(participant);
     }
@@ -50,7 +52,7 @@ public sealed class ParticipantService(
     public async Task<GuestInvitationDto?> InviteGuestAsync(
         Guid meetingId, string name, string email, DateTimeOffset expiresUtc, CancellationToken cancellationToken)
     {
-        if (!await MeetingExistsAsync(meetingId, cancellationToken))
+        if (await meetings.GetAsync(meetingId, cancellationToken) is not { } meeting)
         {
             return null;
         }
@@ -63,6 +65,7 @@ public sealed class ParticipantService(
 
         var (participant, token) = MeetingParticipant.Guest(Guid.NewGuid(), tenant.RequiredTenantId, meetingId, name, email, expiresUtc, now);
         await participants.AddAsync(participant, cancellationToken);
+        await notifications.GuestInvitedAsync(meeting, new Notifications.GuestRecipient(participant.Id, participant.GuestEmail!, participant.GuestName), token, cancellationToken);
         await participants.SaveChangesAsync(cancellationToken);
         return new GuestInvitationDto(ParticipantDto.From(participant), token);
     }
