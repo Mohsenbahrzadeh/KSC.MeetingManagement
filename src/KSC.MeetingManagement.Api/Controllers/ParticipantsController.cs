@@ -1,6 +1,7 @@
 using KSC.MeetingManagement.Api.Authorization;
 using KSC.MeetingManagement.Api.Tenancy;
 using KSC.MeetingManagement.Application.Identity;
+using KSC.MeetingManagement.Application.Meetings;
 using KSC.MeetingManagement.Application.Participants;
 using KSC.MeetingManagement.Domain.Identity;
 using KSC.MeetingManagement.Domain.Meetings;
@@ -9,7 +10,7 @@ using Microsoft.AspNetCore.Mvc;
 
 namespace KSC.MeetingManagement.Api.Controllers;
 
-public sealed record AddInternalParticipantRequest(Guid UserId);
+public sealed record AddInternalParticipantRequest(Guid UserId, bool AllowConflicts = false);
 
 public sealed record InviteGuestRequest(string Name, string Email, DateTimeOffset ExpiresUtc);
 
@@ -32,7 +33,7 @@ public sealed class ParticipantsController(ParticipantService participants, ICur
     public Task<IActionResult> AddInternal(Guid meetingId, AddInternalParticipantRequest request, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(request);
-        return Run(async () => await participants.AddInternalAsync(meetingId, request.UserId, cancellationToken) is { } dto
+        return Run(async () => await participants.AddInternalAsync(meetingId, request.UserId, request.AllowConflicts, cancellationToken) is { } dto
             ? StatusCode(StatusCodes.Status201Created, dto)
             : NotFound());
     }
@@ -83,6 +84,10 @@ public sealed class ParticipantsController(ParticipantService participants, ICur
         catch (MeetingDomainException ex)
         {
             return Problem(ex.Message, statusCode: StatusCodes.Status422UnprocessableEntity);
+        }
+        catch (MeetingTimeConflictException ex)
+        {
+            return ConflictProblem.From(ex);
         }
     }
 }

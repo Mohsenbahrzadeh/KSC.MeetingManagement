@@ -13,7 +13,8 @@ public sealed record CreateMeetingRequest(
     string? Description,
     MeetingMode Mode,
     DateTimeOffset? Start,
-    DateTimeOffset? End);
+    DateTimeOffset? End,
+    bool AllowConflicts = false);
 
 public sealed record UpdateMeetingRequest(
     long ExpectedVersion,
@@ -21,7 +22,8 @@ public sealed record UpdateMeetingRequest(
     string? Description,
     MeetingMode Mode,
     DateTimeOffset? Start,
-    DateTimeOffset? End);
+    DateTimeOffset? End,
+    bool AllowConflicts = false);
 
 public sealed record CancelMeetingRequest(long ExpectedVersion, string Reason);
 
@@ -43,7 +45,7 @@ public sealed class MeetingsController(MeetingService meetings) : ControllerBase
         try
         {
             var result = await meetings.CreateAsync(
-                new CreateMeetingCommand(request.Id, request.Title, request.Description, request.Mode, request.Start, request.End),
+                new CreateMeetingCommand(request.Id, request.Title, request.Description, request.Mode, request.Start, request.End, request.AllowConflicts),
                 cancellationToken);
 
             return result.Created
@@ -53,6 +55,10 @@ public sealed class MeetingsController(MeetingService meetings) : ControllerBase
         catch (MeetingDomainException ex)
         {
             return Problem(ex.Message, statusCode: StatusCodes.Status422UnprocessableEntity);
+        }
+        catch (MeetingTimeConflictException ex)
+        {
+            return ConflictProblem.From(ex);
         }
     }
 
@@ -68,7 +74,7 @@ public sealed class MeetingsController(MeetingService meetings) : ControllerBase
         ArgumentNullException.ThrowIfNull(request);
         return Mutate(() => meetings.UpdateAsync(
             id,
-            new UpdateMeetingCommand(request.ExpectedVersion, request.Title, request.Description, request.Mode, request.Start, request.End),
+            new UpdateMeetingCommand(request.ExpectedVersion, request.Title, request.Description, request.Mode, request.Start, request.End, request.AllowConflicts),
             cancellationToken));
     }
 
@@ -101,6 +107,10 @@ public sealed class MeetingsController(MeetingService meetings) : ControllerBase
         catch (MeetingConcurrencyException ex)
         {
             return Problem(ex.Message, statusCode: StatusCodes.Status409Conflict);
+        }
+        catch (MeetingTimeConflictException ex)
+        {
+            return ConflictProblem.From(ex);
         }
     }
 
