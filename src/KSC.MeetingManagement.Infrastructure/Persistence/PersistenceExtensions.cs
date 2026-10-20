@@ -6,6 +6,7 @@ using Microsoft.Extensions.DependencyInjection.Extensions;
 using KSC.MeetingManagement.Application.Agenda;
 using KSC.MeetingManagement.Application.Attachments;
 using KSC.MeetingManagement.Application.Committees;
+using KSC.MeetingManagement.Application.Minutes;
 using KSC.MeetingManagement.Infrastructure.Storage;
 using KSC.MeetingManagement.Application.Participants;
 
@@ -40,6 +41,8 @@ public static class PersistenceExtensions
         services.TryAddSingleton<IFileStore>(_ => new LocalFileStore(
             configuration["Storage:Root"] ?? Path.Combine(AppContext.BaseDirectory, "App_Data", "files")));
         services.AddScoped<AttachmentService>();
+        services.AddScoped<IMinutesRepository, EfMinutesRepository>();
+        services.AddScoped<MinutesService>();
         services.AddScoped<IAgendaRepository, EfAgendaRepository>();
         services.AddScoped<AgendaService>();
         services.AddScoped<ICommitteeRepository, EfCommitteeRepository>();
