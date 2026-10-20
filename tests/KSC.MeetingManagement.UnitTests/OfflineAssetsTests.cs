@@ -45,4 +45,17 @@ public class OfflineAssetsTests
         Assert.NotEmpty(files);
         Assert.Empty(offenders);
     }
+
+    [Fact]
+    public void The_meeting_room_library_is_bundled_with_its_licence_and_loaded_only_from_this_site()
+    {
+        var wwwroot = Path.Combine(WebRoot(), "wwwroot");
+        var script = File.ReadAllText(Path.Combine(wwwroot, "ksc-room.js"));
+
+        Assert.True(new FileInfo(Path.Combine(wwwroot, "lib", "livekit-client", "livekit-client.esm.mjs")).Length > 500_000);
+        Assert.True(File.Exists(Path.Combine(wwwroot, "lib", "livekit-client", "LICENSE.txt")));
+        Assert.Contains("./lib/livekit-client/livekit-client.esm.mjs", script, StringComparison.Ordinal);
+        Assert.DoesNotMatch(@"import\s[^;]*from\s+['""](https?:)?//", script);
+        Assert.DoesNotContain("import(\"http", script, StringComparison.Ordinal);
+    }
 }

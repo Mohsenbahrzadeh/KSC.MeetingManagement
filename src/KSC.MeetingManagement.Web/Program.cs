@@ -23,6 +23,7 @@ builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddScoped<AuthApiClient>();
 builder.Services.AddScoped<ISessionStore, ProtectedSessionStore>();
 builder.Services.AddScoped<SessionState>();
+builder.Services.AddScoped<RoomApiClient>();
 builder.Services.AddScoped<IMeetingCalendarDataProvider, ApiMeetingCalendarDataProvider>();
 builder.Services.AddScoped<MeetingsApiClient>();
 

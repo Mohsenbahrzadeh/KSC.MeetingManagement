@@ -50,6 +50,10 @@
         </StatePanel>
     </DialogContent>
     <DialogActions>
+        @if (MeetingId is { } roomId && _model.Mode != MeetingMode.InPerson)
+        {
+            <MudButton Href="@($"/meetings/{roomId}/room")" Variant="Variant.Outlined" StartIcon="@Icons.Material.Filled.MeetingRoom" Disabled="_saving">ورود به اتاق</MudButton>
+        }
         <MudButton OnClick="Cancel" Disabled="_saving">انصراف</MudButton>
         <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="() => SaveAsync(false)" Disabled="@(_saving || _panel != PanelState.Ready)">
             @if (_saving)
