@@ -8,6 +8,9 @@ public sealed class MeetingService(IMeetingRepository repository, ITenantContext
 {
     public const int MaxPageSize = 200;
 
+    /// <summary>Longest range one list request may cover (a six-week month grid plus slack).</summary>
+    public static readonly TimeSpan MaxRange = TimeSpan.FromDays(62);
+
     /// <summary>
     /// Creates a meeting. A repeated request with the same client-supplied id returns the existing meeting
     /// instead of creating a duplicate.
@@ -96,6 +99,11 @@ public sealed class MeetingService(IMeetingRepository repository, ITenantContext
         if (query.From is { } from && query.To is { } to && to <= from)
         {
             throw new MeetingDomainException("Range end must be after its start.");
+        }
+
+        if (query.From is { } rangeStart && query.To is { } rangeEnd && rangeEnd - rangeStart > MaxRange)
+        {
+            throw new MeetingDomainException($"The requested range cannot be longer than {MaxRange.TotalDays:0} days.");
         }
 
         var bounded = query with
