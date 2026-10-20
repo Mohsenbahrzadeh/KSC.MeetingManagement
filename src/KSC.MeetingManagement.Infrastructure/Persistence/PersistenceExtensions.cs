@@ -1,4 +1,6 @@
+using KSC.MeetingManagement.Application.Media;
 using KSC.MeetingManagement.Application.Meetings;
+using KSC.MeetingManagement.Infrastructure.Media;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -16,6 +18,33 @@ namespace KSC.MeetingManagement.Infrastructure.Persistence;
 
 public static class PersistenceExtensions
 {
+    /// <summary>
+    /// Registers room token issuing. Settings come from configuration section "Media" (ServerUrl, ApiKey, ApiSecret);
+    /// the secret must come from environment variables or secret storage. Without complete settings joining returns 503.
+    /// </summary>
+    public static IServiceCollection AddKscMedia(this IServiceCollection services, IConfiguration configuration)
+    {
+        ArgumentNullException.ThrowIfNull(services);
+        ArgumentNullException.ThrowIfNull(configuration);
+
+        var options = new MediaOptions
+        {
+            ServerUrl = configuration["Media:ServerUrl"],
+            ApiKey = configuration["Media:ApiKey"],
+            ApiSecret = configuration["Media:ApiSecret"],
+            TokenLifetimeMinutes = IntOr(configuration["Media:TokenLifetimeMinutes"], 10),
+            JoinOpensMinutesBeforeStart = IntOr(configuration["Media:JoinOpensMinutesBeforeStart"], 15),
+            JoinClosesMinutesAfterEnd = IntOr(configuration["Media:JoinClosesMinutesAfterEnd"], 120),
+        };
+
+        services.TryAddSingleton(options);
+        services.TryAddSingleton<IMediaTokenService>(sp => new LiveKitTokenService(sp.GetRequiredService<MediaOptions>(), sp.GetRequiredService<TimeProvider>()));
+        services.AddScoped<MediaAccessService>();
+        return services;
+    }
+
+    private static int IntOr(string? value, int fallback) => int.TryParse(value, out var parsed) && parsed > 0 ? parsed : fallback;
+
     /// <summary>
     /// Registers EF Core on PostgreSQL. The connection string (ConnectionStrings:Default) must come from
     /// environment variables or user secrets, never from committed files with credentials.
@@ -43,6 +72,7 @@ public static class PersistenceExtensions
         services.TryAddSingleton<IFileStore>(_ => new LocalFileStore(
             configuration["Storage:Root"] ?? Path.Combine(AppContext.BaseDirectory, "App_Data", "files")));
         services.AddScoped<AttachmentService>();
+        services.AddKscMedia(configuration);
         services.AddScoped<IActionItemRepository, EfActionItemRepository>();
         services.AddScoped<ActionItemService>();
         services.AddScoped<IResolutionRepository, EfResolutionRepository>();
