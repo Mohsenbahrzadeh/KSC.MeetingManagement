@@ -8,6 +8,8 @@ public sealed class KscDbContext(DbContextOptions<KscDbContext> options, ITenant
 {
     public DbSet<Meeting> Meetings => Set<Meeting>();
 
+    public DbSet<Committee> Committees => Set<Committee>();
+
     public DbSet<MeetingNumberCounter> NumberCounters => Set<MeetingNumberCounter>();
 
     public DbSet<MeetingParticipant> Participants => Set<MeetingParticipant>();
@@ -37,6 +39,28 @@ public sealed class KscDbContext(DbContextOptions<KscDbContext> options, ITenant
             b.HasIndex(m => new { m.TenantId, m.Status });
 
             // Defence in depth: tenant filtering never replaces authorization checks.
+            b.HasQueryFilter(m => m.TenantId == CurrentTenantId);
+        });
+
+        modelBuilder.Entity<Committee>(b =>
+        {
+            b.ToTable("committees");
+            b.HasKey(c => c.Id);
+            b.Property(c => c.TenantId).IsRequired();
+            b.Property(c => c.Name).HasMaxLength(200).IsRequired();
+            b.Property(c => c.Description).HasMaxLength(2000);
+            b.HasIndex(c => new { c.TenantId, c.Name });
+            b.HasMany(c => c.Members).WithOne().HasForeignKey(m => m.CommitteeId).OnDelete(DeleteBehavior.Cascade);
+            b.Navigation(c => c.Members).UsePropertyAccessMode(PropertyAccessMode.Field);
+            b.HasQueryFilter(c => c.TenantId == CurrentTenantId);
+        });
+
+        modelBuilder.Entity<CommitteeMember>(b =>
+        {
+            b.ToTable("committee_members");
+            b.HasKey(m => new { m.CommitteeId, m.UserId });
+            b.Property(m => m.TenantId).IsRequired();
+            b.Property(m => m.Role).HasConversion<string>().HasMaxLength(20);
             b.HasQueryFilter(m => m.TenantId == CurrentTenantId);
         });
 
