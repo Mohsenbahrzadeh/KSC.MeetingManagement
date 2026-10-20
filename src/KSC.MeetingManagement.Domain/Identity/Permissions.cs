@@ -13,11 +13,12 @@ public static class Permissions
     public const string WorkflowsManage = "workflows.manage";
     public const string AuditView = "audit.view";
     public const string ReportsView = "reports.view";
+    public const string ActionsManage = "actions.manage";
 
     public static IReadOnlyCollection<string> All { get; } =
     [
         MeetingsView, MeetingsCreate, MeetingsEdit, MeetingsCancel, MinutesWrite, MinutesApprove,
-        UsersManage, OrganizationManage, WorkflowsManage, AuditView, ReportsView,
+        UsersManage, OrganizationManage, WorkflowsManage, AuditView, ReportsView, ActionsManage,
     ];
 }
 
@@ -30,12 +31,12 @@ public static class RolePermissions
         [Roles.TenantAdministrator] =
         [
             Permissions.MeetingsView, Permissions.MeetingsCreate, Permissions.MeetingsEdit, Permissions.MeetingsCancel,
-            Permissions.UsersManage, Permissions.OrganizationManage, Permissions.ReportsView,
+            Permissions.UsersManage, Permissions.OrganizationManage, Permissions.ReportsView, Permissions.ActionsManage,
         ],
         [Roles.WorkflowAdministrator] = [Permissions.WorkflowsManage, Permissions.MeetingsView],
         [Roles.MeetingOrganizer] =
-            [Permissions.MeetingsView, Permissions.MeetingsCreate, Permissions.MeetingsEdit, Permissions.MeetingsCancel],
-        [Roles.Secretary] = [Permissions.MeetingsView, Permissions.MinutesWrite],
+            [Permissions.MeetingsView, Permissions.MeetingsCreate, Permissions.MeetingsEdit, Permissions.MeetingsCancel, Permissions.ActionsManage],
+        [Roles.Secretary] = [Permissions.MeetingsView, Permissions.MinutesWrite, Permissions.ActionsManage],
         [Roles.Participant] = [Permissions.MeetingsView],
         [Roles.Approver] = [Permissions.MeetingsView, Permissions.MinutesApprove],
         [Roles.Auditor] = [Permissions.MeetingsView, Permissions.AuditView, Permissions.ReportsView],

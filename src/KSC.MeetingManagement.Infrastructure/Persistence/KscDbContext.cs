@@ -8,6 +8,8 @@ public sealed class KscDbContext(DbContextOptions<KscDbContext> options, ITenant
 {
     public DbSet<Meeting> Meetings => Set<Meeting>();
 
+    public DbSet<ActionItem> ActionItems => Set<ActionItem>();
+
     public DbSet<Resolution> Resolutions => Set<Resolution>();
 
     public DbSet<Minutes> Minutes => Set<Minutes>();
@@ -49,6 +51,25 @@ public sealed class KscDbContext(DbContextOptions<KscDbContext> options, ITenant
 
             // Defence in depth: tenant filtering never replaces authorization checks.
             b.HasQueryFilter(m => m.TenantId == CurrentTenantId);
+        });
+
+        modelBuilder.Entity<ActionItem>(b =>
+        {
+            b.ToTable("action_items");
+            b.HasKey(a => a.Id);
+            b.Property(a => a.TenantId).IsRequired();
+            b.Property(a => a.MeetingId).IsRequired();
+            b.Property(a => a.ResolutionId);
+            b.Property(a => a.Title).HasMaxLength(ActionItem.MaxTitleLength).IsRequired();
+            b.Property(a => a.Description).HasMaxLength(ActionItem.MaxDescriptionLength);
+            b.Property(a => a.Status).HasConversion<string>().HasMaxLength(20);
+            b.Property(a => a.Note).HasMaxLength(ActionItem.MaxNoteLength);
+            b.Property(a => a.LockVersion).IsConcurrencyToken();
+            b.Ignore(a => a.IsActive);
+            b.HasIndex(a => new { a.TenantId, a.MeetingId });
+            b.HasIndex(a => new { a.TenantId, a.OwnerUserId, a.Status });
+            b.HasIndex(a => new { a.TenantId, a.Status, a.DueDate });
+            b.HasQueryFilter(a => a.TenantId == CurrentTenantId);
         });
 
         modelBuilder.Entity<Resolution>(b =>
