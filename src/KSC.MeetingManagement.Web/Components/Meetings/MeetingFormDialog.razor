@@ -1,0 +1,160 @@
+@using KSC.MeetingManagement.Application.Meetings
+@using KSC.MeetingManagement.Calendar
+@using KSC.MeetingManagement.Calendar.Components
+@using KSC.MeetingManagement.Domain.Meetings
+@using KSC.MeetingManagement.Web.Services
+@implements IDisposable
+@inject MeetingsApiClient Api
+@inject ISnackbar Snackbar
+
+<MudDialog>
+    <DialogContent>
+        <StatePanel State="_panel" ErrorText="@_loadError" OnRetry="LoadAsync">
+            <MudStack Spacing="2">
+                <MudTextField @bind-Value="_model.Title" Label="عنوان" Required="true" Immediate="true" MaxLength="MeetingFormModel.MaxTitleLength"
+                              Error="@HasError(nameof(MeetingFormModel.Title))" ErrorText="@ErrorOf(nameof(MeetingFormModel.Title))" Disabled="_saving" />
+                <MudTextField @bind-Value="_model.Description" Label="توضیحات" Lines="3" MaxLength="MeetingFormModel.MaxDescriptionLength"
+                              Error="@HasError(nameof(MeetingFormModel.Description))" ErrorText="@ErrorOf(nameof(MeetingFormModel.Description))" Disabled="_saving" />
+                <MudSelect T="MeetingMode" @bind-Value="_model.Mode" Label="نوع برگزاری" Disabled="_saving">
+                    <MudSelectItem Value="MeetingMode.InPerson">حضوری</MudSelectItem>
+                    <MudSelectItem Value="MeetingMode.Online">آنلاین</MudSelectItem>
+                    <MudSelectItem Value="MeetingMode.Hybrid">ترکیبی</MudSelectItem>
+                </MudSelect>
+
+                <div>
+                    <KscJalaliDatePicker @bind-Value="_model.Date" Label="تاریخ" Required="true" Disabled="_saving" />
+                    @if (HasError(nameof(MeetingFormModel.Date)))
+                    {
+                        <MudText Color="Color.Error" Typo="Typo.caption" role="alert">@ErrorOf(nameof(MeetingFormModel.Date))</MudText>
+                    }
+                </div>
+
+                <MudStack Row="true" Spacing="2">
+                    <MudTimePicker @bind-Time="_model.StartTime" Label="ساعت شروع" Editable="true" AmPm="false" Disabled="_saving"
+                                   Error="@HasError(nameof(MeetingFormModel.StartTime))" ErrorText="@ErrorOf(nameof(MeetingFormModel.StartTime))" />
+                    <MudTimePicker @bind-Time="_model.EndTime" Label="ساعت پایان" Editable="true" AmPm="false" Disabled="_saving"
+                                   Error="@HasError(nameof(MeetingFormModel.EndTime))" ErrorText="@ErrorOf(nameof(MeetingFormModel.EndTime))" />
+                </MudStack>
+
+                @if (_serverError is not null)
+                {
+                    <MudAlert Severity="Severity.Error" Variant="Variant.Outlined" role="alert">
+                        @_serverError
+                        @if (_canForce)
+                        {
+                            <MudButton Class="ms-2" Size="Size.Small" Variant="Variant.Text" Disabled="_saving" OnClick="() => SaveAsync(true)">ثبت با وجود تداخل</MudButton>
+                        }
+                    </MudAlert>
+                }
+            </MudStack>
+        </StatePanel>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel" Disabled="_saving">انصراف</MudButton>
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="() => SaveAsync(false)" Disabled="@(_saving || _panel != PanelState.Ready)">
+            @if (_saving)
+            {
+                <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="me-2" />
+            }
+            ذخیره
+        </MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    private readonly CancellationTokenSource _cts = new();
+    private MeetingFormModel _model = new();
+    private IReadOnlyDictionary<string, string> _errors = new Dictionary<string, string>();
+    private PanelState _panel = PanelState.Ready;
+    private string _loadError = "بارگیری جلسه ناموفق بود.";
+    private string? _serverError;
+    private bool _canForce;
+    private bool _saving;
+    private Guid _newId = Guid.NewGuid();
+    private long _version;
+
+    [CascadingParameter] private IMudDialogInstance Dialog { get; set; } = default!;
+
+    [Parameter, EditorRequired] public CalendarLayout Layout { get; set; } = default!;
+
+    /// <summary>Slot used to prefill a new meeting.</summary>
+    [Parameter] public CalendarSlot? Slot { get; set; }
+
+    /// <summary>When set, the dialog edits this existing meeting.</summary>
+    [Parameter] public Guid? MeetingId { get; set; }
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (MeetingId is null)
+        {
+            _model = Slot is { } slot ? MeetingFormModel.FromSlot(slot, Layout) : new MeetingFormModel();
+            return;
+        }
+
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        _panel = PanelState.Loading;
+        var result = await Api.GetAsync(MeetingId!.Value, _cts.Token);
+        if (result.Succeeded && result.Value is { } meeting)
+        {
+            _version = meeting.Version;
+            _model = MeetingFormModel.FromMeeting(meeting.Title, meeting.Description, meeting.Mode, meeting.StartUtc, meeting.EndUtc, Layout);
+            _panel = PanelState.Ready;
+        }
+        else
+        {
+            _loadError = result.Message ?? _loadError;
+            _panel = PanelState.Error;
+        }
+    }
+
+    private async Task SaveAsync(bool allowConflicts)
+    {
+        _serverError = null;
+        _canForce = false;
+        _errors = _model.Validate();
+        if (_errors.Count > 0)
+        {
+            return;
+        }
+
+        _saving = true;
+        try
+        {
+            var slot = _model.ToSlot(Layout);
+            var input = new MeetingInput(_model.Title.Trim(), _model.Description, _model.Mode, slot.StartUtc, slot.EndUtc, allowConflicts);
+            var result = MeetingId is { } id
+                ? await Api.UpdateAsync(id, _version, input, _cts.Token)
+                : await Api.CreateAsync(_newId, input, _cts.Token);
+
+            if (result.Succeeded && result.Value is { } saved)
+            {
+                Snackbar.Add(MeetingId is null ? "جلسه ایجاد شد." : "تغییرات ذخیره شد.", Severity.Success);
+                Dialog.Close(DialogResult.Ok(saved));
+                return;
+            }
+
+            _serverError = result.Message ?? ApiResultReader.GenericFailure;
+            _canForce = result.Error == ApiErrorKind.TimeConflict;
+        }
+        finally
+        {
+            _saving = false;
+        }
+    }
+
+    private void Cancel() => Dialog.Cancel();
+
+    private bool HasError(string field) => _errors.ContainsKey(field);
+
+    private string? ErrorOf(string field) => _errors.TryGetValue(field, out var message) ? message : null;
+
+    public void Dispose()
+    {
+        _cts.Cancel();
+        _cts.Dispose();
+    }
+}

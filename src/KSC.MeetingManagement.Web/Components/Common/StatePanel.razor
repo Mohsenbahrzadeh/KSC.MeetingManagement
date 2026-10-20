@@ -1,0 +1,50 @@
+@* Standard page states: loading, empty, error (with retry) and ready content. *@
+@switch (State)
+{
+    case PanelState.Loading:
+        <div class="d-flex align-center gap-2 py-4" role="status">
+            <MudProgressCircular Size="Size.Small" Indeterminate="true" />
+            <MudText>@LoadingText</MudText>
+        </div>
+        break;
+    case PanelState.Error:
+        <MudAlert Severity="Severity.Error" Variant="Variant.Outlined" role="alert" Class="my-2">
+            @ErrorText
+            @if (OnRetry.HasDelegate)
+            {
+                <MudButton Class="ms-2" Size="Size.Small" Variant="Variant.Text" OnClick="OnRetry">تلاش دوباره</MudButton>
+            }
+        </MudAlert>
+        break;
+    case PanelState.Empty:
+        <div class="d-flex flex-column align-center py-6" role="status">
+            <MudIcon Icon="@EmptyIcon" Color="Color.Default" Size="Size.Large" />
+            <MudText Class="mt-2">@EmptyText</MudText>
+            @if (EmptyAction is not null)
+            {
+                <div class="mt-2">@EmptyAction</div>
+            }
+        </div>
+        break;
+    default:
+        @ChildContent
+        break;
+}
+
+@code {
+    [Parameter] public PanelState State { get; set; } = PanelState.Ready;
+
+    [Parameter] public string LoadingText { get; set; } = "در حال بارگیری…";
+
+    [Parameter] public string EmptyText { get; set; } = "موردی برای نمایش نیست.";
+
+    [Parameter] public string EmptyIcon { get; set; } = Icons.Material.Outlined.Inbox;
+
+    [Parameter] public string ErrorText { get; set; } = "بارگیری ناموفق بود.";
+
+    [Parameter] public EventCallback OnRetry { get; set; }
+
+    [Parameter] public RenderFragment? EmptyAction { get; set; }
+
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+}

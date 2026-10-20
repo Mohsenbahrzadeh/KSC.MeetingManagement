@@ -1,14 +1,44 @@
 @page "/calendar"
 @using KSC.MeetingManagement.Calendar
 @using KSC.MeetingManagement.Calendar.Components
+@using KSC.MeetingManagement.Web.Components.Meetings
 @using KSC.MeetingManagement.Web.Services
 @inject IMeetingCalendarDataProvider Provider
+@inject MeetingsApiClient Api
+@inject IDialogService Dialogs
 
 <PageTitle>تقویم | مدیریت جلسات</PageTitle>
 
 <MudText Typo="Typo.h4" Class="mb-2" tabindex="-1">تقویم جلسات</MudText>
-<KscCalendar @bind-View="_view" Provider="Provider" />
+<KscCalendar @ref="_calendar" @bind-View="_view" Provider="Provider" TimeZone="_layout.TimeZone"
+             OnSlotSelected="CreateAsync" OnItemSelected="EditAsync" OnItemMoved="MoveAsync" />
 
 @code {
+    private readonly CalendarLayout _layout = new(TehranClock.TimeZone);
+    private KscCalendar? _calendar;
     private CalendarView _view = new(CalendarViewMode.Month, TehranClock.Today());
+
+    private static readonly DialogOptions Options = new() { MaxWidth = MaxWidth.Small, FullWidth = true, CloseOnEscapeKey = true };
+
+    private Task CreateAsync(CalendarSlot slot) =>
+        ShowAsync("جلسهٔ جدید", new DialogParameters<MeetingFormDialog> { { d => d.Layout, _layout }, { d => d.Slot, slot } });
+
+    private Task EditAsync(CalendarItem item) =>
+        ShowAsync("ویرایش جلسه", new DialogParameters<MeetingFormDialog> { { d => d.Layout, _layout }, { d => d.MeetingId, item.Id } });
+
+    private async Task ShowAsync(string title, DialogParameters<MeetingFormDialog> parameters)
+    {
+        var dialog = await Dialogs.ShowAsync<MeetingFormDialog>(title, parameters, Options);
+        var result = await dialog.Result;
+        if (result is { Canceled: false } && _calendar is not null)
+        {
+            await _calendar.RefreshAsync();
+        }
+    }
+
+    private async Task<CalendarMoveResult> MoveAsync(CalendarItem item, CalendarSlot slot)
+    {
+        var result = await Api.RescheduleAsync(item.Id, item.Version, slot.StartUtc, slot.EndUtc, CancellationToken.None);
+        return result.Succeeded ? CalendarMoveResult.Ok : CalendarMoveResult.Fail(result.Message ?? ApiResultReader.GenericFailure);
+    }
 }

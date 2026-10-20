@@ -176,4 +176,40 @@ public sealed class ConflictsApiTests : IClassFixture<WebApplicationFactory<Prog
 
         Assert.Equal(HttpStatusCode.Conflict, move.StatusCode);
     }
+
+    [Fact]
+    public async Task Reschedule_moves_only_the_time_and_checks_version_and_conflicts()
+    {
+        var a = await Read(await Create(_org1, Start, Start.AddHours(1)));
+        var b = await Read(await Create(_org1, Start.AddHours(3), Start.AddHours(4)));
+
+        var ok = await Send(HttpMethod.Post, $"/api/v1/meetings/{a.Id}/reschedule", _tenantA, _org1,
+            new { expectedVersion = a.Version, start = Start.AddHours(6), end = Start.AddHours(7) });
+        var moved = await Read(ok);
+        var stale = await Send(HttpMethod.Post, $"/api/v1/meetings/{a.Id}/reschedule", _tenantA, _org1,
+            new { expectedVersion = a.Version, start = Start.AddHours(8), end = Start.AddHours(9) });
+        var onto = await Send(HttpMethod.Post, $"/api/v1/meetings/{b.Id}/reschedule", _tenantA, _org1,
+            new { expectedVersion = b.Version, start = Start.AddHours(6), end = Start.AddHours(7) });
+        var invalid = await Send(HttpMethod.Post, $"/api/v1/meetings/{b.Id}/reschedule", _tenantA, _org1,
+            new { expectedVersion = b.Version, start = Start.AddHours(8), end = Start.AddHours(8) });
+
+        Assert.Equal(Start.AddHours(6), moved.StartUtc);
+        Assert.Equal(a.Title, moved.Title);
+        Assert.Equal(HttpStatusCode.Conflict, stale.StatusCode);
+        Assert.Equal(HttpStatusCode.Conflict, onto.StatusCode);
+        Assert.Equal(HttpStatusCode.UnprocessableEntity, invalid.StatusCode);
+    }
+
+    [Fact]
+    public async Task Reschedule_requires_edit_permission_and_is_tenant_scoped()
+    {
+        var a = await Read(await Create(_org1, Start, Start.AddHours(1)));
+        var body = new { expectedVersion = a.Version, start = Start.AddHours(6), end = Start.AddHours(7) };
+
+        var participant = await Send(HttpMethod.Post, $"/api/v1/meetings/{a.Id}/reschedule", _tenantA, _member, body);
+        var otherTenant = await Send(HttpMethod.Post, $"/api/v1/meetings/{a.Id}/reschedule", _tenantB, _orgB, body);
+
+        Assert.Equal(HttpStatusCode.Forbidden, participant.StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, otherTenant.StatusCode);
+    }
 }
