@@ -36,7 +36,8 @@ public sealed class AgendaService(
     IAgendaRepository agenda,
     IMeetingRepository meetings,
     IMembershipStore memberships,
-    ITenantContext tenant)
+    ITenantContext tenant,
+    Resolutions.IResolutionRepository resolutions)
 {
     public const int MaxItems = 100;
 
@@ -82,12 +83,16 @@ public sealed class AgendaService(
     }
 
     public Task<AgendaDto?> RemoveAsync(Guid meetingId, Guid itemId, long expectedRevision, CancellationToken cancellationToken) =>
-        MutateAsync(meetingId, expectedRevision, (_, items) =>
+        MutateAsync(meetingId, expectedRevision, async (_, items) =>
         {
             var item = items.FirstOrDefault(i => i.Id == itemId) ?? throw new KeyNotFoundException("Agenda item not found.");
+            if (await resolutions.AnyForAgendaItemAsync(itemId, cancellationToken))
+            {
+                throw new MeetingDomainException("This agenda item has resolutions and cannot be removed.");
+            }
+
             agenda.Remove(item);
             AgendaOrdering.Normalize(items.Where(i => i.Id != itemId));
-            return Task.CompletedTask;
         }, cancellationToken);
 
     /// <summary>Applies a complete new order; the ids must be exactly the current items.</summary>

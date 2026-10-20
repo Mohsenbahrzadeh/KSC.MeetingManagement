@@ -323,7 +323,6 @@ namespace KSC.MeetingManagement.Infrastructure.Persistence.Migrations
             modelBuilder.Entity("KSC.MeetingManagement.Domain.Meetings.MinutesTransition", b =>
                 {
                     b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
                     b.Property<Guid>("ActorUserId")
@@ -386,6 +385,58 @@ namespace KSC.MeetingManagement.Infrastructure.Persistence.Migrations
                     b.HasKey("MinutesId", "Number");
 
                     b.ToTable("minutes_versions", (string)null);
+                });
+
+            modelBuilder.Entity("KSC.MeetingManagement.Domain.Meetings.Resolution", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid?>("AgendaItemId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset?>("DecidedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("DecidedByUserId")
+                        .HasColumnType("uuid");
+
+                    b.Property<long>("LockVersion")
+                        .IsConcurrencyToken()
+                        .HasColumnType("bigint");
+
+                    b.Property<Guid>("MeetingId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("Number")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("RevocationReason")
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Text")
+                        .IsRequired()
+                        .HasMaxLength(4000)
+                        .HasColumnType("character varying(4000)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("AgendaItemId");
+
+                    b.HasIndex("TenantId", "MeetingId", "Number")
+                        .IsUnique();
+
+                    b.ToTable("resolutions", (string)null);
                 });
 
             modelBuilder.Entity("KSC.MeetingManagement.Domain.Meetings.CommitteeMember", b =>
