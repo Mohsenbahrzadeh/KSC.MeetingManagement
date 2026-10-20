@@ -75,6 +75,53 @@ namespace KSC.MeetingManagement.Infrastructure.Persistence.Migrations
 
                     b.ToTable("meetings", (string)null);
                 });
+
+            modelBuilder.Entity("KSC.MeetingManagement.Domain.Meetings.MeetingParticipant", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("GuestEmail")
+                        .HasMaxLength(320)
+                        .HasColumnType("character varying(320)");
+
+                    b.Property<string>("GuestName")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<DateTimeOffset?>("InviteExpiresUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("InviteTokenHash")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<Guid>("MeetingId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid?>("UserId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId", "MeetingId");
+
+                    b.ToTable("meeting_participants", (string)null);
+                });
 #pragma warning restore 612, 618
         }
     }
