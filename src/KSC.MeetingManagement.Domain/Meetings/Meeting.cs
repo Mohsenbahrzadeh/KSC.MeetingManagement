@@ -67,6 +67,16 @@ public sealed class Meeting
     /// <summary>Incremented on every change; used for optimistic concurrency.</summary>
     public long Version { get; private set; }
 
+    /// <summary>Incremented on every agenda change; a separate concurrency token so agenda edits and detail edits do not block each other.</summary>
+    public long AgendaRevision { get; private set; }
+
+    /// <summary>Marks the agenda as changed. Throws when the meeting can no longer be edited.</summary>
+    public void TouchAgenda()
+    {
+        EnsureEditable();
+        AgendaRevision++;
+    }
+
     public static bool CanTransition(MeetingStatus from, MeetingStatus to) =>
         Transitions.TryGetValue(from, out var allowed) && allowed.Contains(to);
 
