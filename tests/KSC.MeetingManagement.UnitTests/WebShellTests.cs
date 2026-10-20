@@ -18,6 +18,9 @@ public sealed class WebShellTests : BunitContext, IAsyncLifetime
     {
         JSInterop.Mode = JSRuntimeMode.Loose;
         Services.AddMudServices();
+        var server = new FakeAuthServer();
+        var store = new MemoryStore { Saved = new StoredSession("saved", null) };
+        Services.AddSingleton<SessionState>(_ => new SessionState(new AuthApiClient(new FakeFactory(server)), store, new FakeClock(server.Now)));
     }
 
     // MudBlazor services are async-disposable only, so the container must be disposed asynchronously.
@@ -48,6 +51,7 @@ public sealed class WebShellTests : BunitContext, IAsyncLifetime
     {
         var cut = Render<MainLayout>(p => p.Add(c => c.Body, (RenderFragment)(b => b.AddMarkupContent(0, "<p id=\"body\">محتوا</p>"))));
 
+        cut.WaitForAssertion(() => Assert.Single(cut.FindAll("#body")));
         var hrefs = cut.FindAll("a.mud-nav-link").Select(a => a.GetAttribute("href")).ToList();
 
         Assert.Equal(NavItems.Main.Select(i => i.Href), hrefs);
@@ -61,7 +65,7 @@ public sealed class WebShellTests : BunitContext, IAsyncLifetime
     {
         var cut = Render<MainLayout>(p => p.Add(c => c.Body, (RenderFragment)(_ => { })));
 
-        Assert.Contains("mud-drawer-pos-right", cut.Markup, StringComparison.Ordinal);
+        cut.WaitForAssertion(() => Assert.Contains("mud-drawer-pos-right", cut.Markup, StringComparison.Ordinal));
     }
 
     private sealed class StubHandler(Func<HttpRequestMessage, HttpResponseMessage> respond) : HttpMessageHandler

@@ -104,3 +104,8 @@ h1:focus { outline: none; }
     inset-inline: 0; padding: 0.6rem 1.25rem 0.7rem 1.25rem; position: fixed; z-index: 1000;
 }
 #blazor-error-ui .dismiss { cursor: pointer; position: absolute; inset-inline-end: 0.75rem; top: 0.5rem; }
+
+/* ---- Sign-in ---- */
+.ksc-login { max-inline-size: 28rem; margin: 4vh auto 0; }
+.ksc-login .ksc-card { padding: 2rem; }
+.ksc-loading { display: grid; place-items: center; min-block-size: 40vh; }

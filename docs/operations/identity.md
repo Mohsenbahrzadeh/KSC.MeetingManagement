@@ -32,3 +32,12 @@ Five wrong passwords lock the account for 15 minutes. Send `Authorization: Beare
 ## Not verified here
 
 The `AddIdentity` migration and these flows have run only on the EF in-memory provider, not on a real PostgreSQL.
+
+## Web application
+
+The Blazor app shows `/login` to anonymous visitors (other pages redirect there and come back afterwards). The refresh token is kept encrypted in the
+session storage of the browser tab (it disappears when the tab closes); the access token stays in server memory and is renewed shortly before it expires.
+Users with several organisations pick one from the account menu; every API call then carries that organisation in `X-Tenant-Id`.
+`Api:TenantId` is no longer used.
+
+Notification addresses (reminders, invitations to members) are now read from the user accounts of active members.
