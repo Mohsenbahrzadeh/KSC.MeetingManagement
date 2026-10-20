@@ -15,6 +15,7 @@ public sealed class TenantResolutionTests : IClassFixture<WebApplicationFactory<
     public TenantResolutionTests(WebApplicationFactory<Program> factory)
     {
         _suspended.Suspend();
+        factory = factory.WithWebHostBuilder(b => b.ConfigureServices(s => s.UseInMemoryKscDatabase(Guid.NewGuid().ToString())));
         var store = factory.Services.GetRequiredService<InMemoryTenantStore>();
         store.Add(_active);
         store.Add(_suspended);

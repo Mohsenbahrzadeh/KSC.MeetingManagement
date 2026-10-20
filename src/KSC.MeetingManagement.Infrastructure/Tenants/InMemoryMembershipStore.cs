@@ -4,7 +4,7 @@ using KSC.MeetingManagement.Domain.Identity;
 
 namespace KSC.MeetingManagement.Infrastructure.Tenants;
 
-/// <summary>Temporary store until the PostgreSQL/EF Core store lands (ADR-0002).</summary>
+/// <summary>In-memory store used by tests and local experiments; production reads memberships from the database.</summary>
 public sealed class InMemoryMembershipStore : IMembershipStore
 {
     private readonly ConcurrentDictionary<(Guid Tenant, Guid User), Membership> _items = new();
@@ -17,4 +17,7 @@ public sealed class InMemoryMembershipStore : IMembershipStore
 
     public Task<Membership?> FindAsync(Guid tenantId, Guid userId, CancellationToken cancellationToken) =>
         Task.FromResult(_items.GetValueOrDefault((tenantId, userId)));
+
+    public Task<IReadOnlyList<Membership>> ListForUserAsync(Guid userId, CancellationToken cancellationToken) =>
+        Task.FromResult<IReadOnlyList<Membership>>(_items.Values.Where(m => m.UserId == userId).ToList());
 }
