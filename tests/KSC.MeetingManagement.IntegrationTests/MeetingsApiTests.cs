@@ -270,4 +270,32 @@ public sealed class MeetingsApiTests : IClassFixture<WebApplicationFactory<Progr
 
         Assert.Equal(first!.Number, second!.Number);
     }
+
+    [Fact]
+    public async Task Range_longer_than_the_limit_is_rejected_and_page_size_is_capped()
+    {
+        var from = Uri.EscapeDataString(Start.ToString("O"));
+        var tooLong = Uri.EscapeDataString(Start.AddDays(63).ToString("O"));
+        var ok = Uri.EscapeDataString(Start.AddDays(62).ToString("O"));
+
+        Assert.Equal(HttpStatusCode.UnprocessableEntity, (await Send(HttpMethod.Get, $"/api/v1/meetings?from={from}&to={tooLong}", _tenantA, _organizerA)).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await Send(HttpMethod.Get, $"/api/v1/meetings?from={from}&to={ok}&take=100000", _tenantA, _organizerA)).StatusCode);
+    }
+
+    [Fact]
+    public async Task Range_query_returns_only_meetings_overlapping_the_range_and_status()
+    {
+        var inRange = await CreateScheduled();
+        await Send(HttpMethod.Post, "/api/v1/meetings", _tenantA, _organizerA, NewMeeting(start: Start.AddDays(30), end: Start.AddDays(30).AddHours(1)));
+        await Send(HttpMethod.Post, $"/api/v1/meetings/{inRange.Id}/cancel", _tenantA, _organizerA, new { expectedVersion = inRange.Version, reason = "x" });
+        var from = Uri.EscapeDataString(Start.AddHours(-1).ToString("O"));
+        var to = Uri.EscapeDataString(Start.AddHours(2).ToString("O"));
+
+        var scheduled = await (await Send(HttpMethod.Get, $"/api/v1/meetings?from={from}&to={to}&status=Scheduled", _tenantA, _organizerA)).Content.ReadFromJsonAsync<List<MeetingDto>>(Json);
+        var cancelled = await (await Send(HttpMethod.Get, $"/api/v1/meetings?from={from}&to={to}&status=Cancelled", _tenantA, _organizerA)).Content.ReadFromJsonAsync<List<MeetingDto>>(Json);
+
+        Assert.DoesNotContain(scheduled!, m => m.Id == inRange.Id);
+        Assert.Contains(cancelled!, m => m.Id == inRange.Id);
+        Assert.All(cancelled!, m => Assert.True(m.StartUtc < Start.AddHours(2)));
+    }
 }
