@@ -1,0 +1,87 @@
+@page "/login"
+@using System.ComponentModel.DataAnnotations
+@using KSC.MeetingManagement.Web.Services
+@inject SessionState Session
+@inject NavigationManager Navigation
+
+<PageTitle>ورود | مدیریت جلسات</PageTitle>
+
+<section class="ksc-login">
+    <MudPaper Class="ksc-card pa-6" Elevation="0">
+        <h1 class="ksc-page-title" tabindex="-1">ورود به سامانه</h1>
+        <p class="ksc-page-sub">با ایمیل و گذرواژهٔ خود وارد شوید.</p>
+
+        @if (_error is not null)
+        {
+            <MudAlert Severity="Severity.Error" Class="mb-4" role="alert">@_error</MudAlert>
+        }
+
+        <EditForm Model="_model" OnValidSubmit="SignInAsync" FormName="login">
+            <DataAnnotationsValidator />
+            <MudTextField @bind-Value="_model.Email" Label="ایمیل" InputType="InputType.Email" Variant="Variant.Outlined"
+                          Immediate="true" AutoFocus="true" Class="mb-3" Margin="Margin.Dense"
+                          For="() => _model.Email" Disabled="_busy" Adornment="Adornment.End" AdornmentIcon="@Icons.Material.Filled.Email" />
+            <MudTextField @bind-Value="_model.Password" Label="گذرواژه" InputType="InputType.Password" Variant="Variant.Outlined"
+                          Immediate="true" Class="mb-4" Margin="Margin.Dense"
+                          For="() => _model.Password" Disabled="_busy" Adornment="Adornment.End" AdornmentIcon="@Icons.Material.Filled.Lock" />
+            <MudButton ButtonType="ButtonType.Submit" Variant="Variant.Filled" Color="Color.Primary" Size="Size.Large" FullWidth="true" Disabled="_busy">
+                @if (_busy)
+                {
+                    <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="ms-2" />
+                }
+                ورود
+            </MudButton>
+        </EditForm>
+    </MudPaper>
+</section>
+
+@code {
+    private readonly LoginModel _model = new();
+    private bool _busy;
+    private string? _error;
+
+    [SupplyParameterFromQuery(Name = "returnUrl")]
+    public string? ReturnUrl { get; set; }
+
+    protected override void OnInitialized()
+    {
+        if (Session.IsSignedIn)
+        {
+            Navigation.NavigateTo(SafeTarget(ReturnUrl), replace: true);
+        }
+    }
+
+    private async Task SignInAsync()
+    {
+        _busy = true;
+        _error = null;
+        try
+        {
+            _error = await Session.LoginAsync(_model.Email, _model.Password, CancellationToken.None);
+            if (_error is null)
+            {
+                Navigation.NavigateTo(SafeTarget(ReturnUrl), replace: true);
+            }
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    /// <summary>Only local paths are accepted, so a crafted link cannot send a user to another site after signing in.</summary>
+    public static string SafeTarget(string? returnUrl) =>
+        !string.IsNullOrEmpty(returnUrl) && returnUrl[0] == '/' && (returnUrl.Length == 1 || (returnUrl[1] != '/' && returnUrl[1] != '\\'))
+            ? returnUrl
+            : "/";
+
+    private sealed class LoginModel
+    {
+        [Required(ErrorMessage = "ایمیل را وارد کنید.")]
+        [EmailAddress(ErrorMessage = "ایمیل معتبر نیست.")]
+        public string Email { get; set; } = string.Empty;
+
+        [Required(ErrorMessage = "گذرواژه را وارد کنید.")]
+        public string Password { get; set; } = string.Empty;
+    }
+}

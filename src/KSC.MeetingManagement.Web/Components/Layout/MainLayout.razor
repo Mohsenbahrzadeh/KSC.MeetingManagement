@@ -1,4 +1,8 @@
-﻿@inherits LayoutComponentBase
+@inherits LayoutComponentBase
+@implements IDisposable
+@using KSC.MeetingManagement.Web.Services
+@inject SessionState Session
+@inject NavigationManager Navigation
 
 <MudRTLProvider RightToLeft="true">
     <MudThemeProvider Theme="KscTheme.Default" @bind-IsDarkMode="_dark" />
@@ -8,7 +12,7 @@
 
     <MudLayout>
         <MudAppBar Elevation="0" Class="ksc-appbar">
-            <MudIconButton Icon="@Icons.Material.Filled.Menu" Color="Color.Inherit" Edge="Edge.Start"
+            <MudIconButton Icon="@Icons.Material.Filled.Menu" Class="@(Session.IsSignedIn ? null : "d-none")" Color="Color.Inherit" Edge="Edge.Start"
                            aria-label="باز و بسته کردن منو" OnClick="ToggleDrawer" />
             <a href="/" class="ksc-brand" style="color: inherit; text-decoration: none;">
                 <span class="ksc-brand-mark" aria-hidden="true">
@@ -21,24 +25,62 @@
                 <MudIconButton Icon="@(_dark ? Icons.Material.Filled.LightMode : Icons.Material.Filled.DarkMode)" Color="Color.Inherit"
                                aria-label="تغییر حالت روشن و تاریک" OnClick="ToggleDark" />
             </MudTooltip>
+            @if (Session.IsSignedIn && Session.User is { } user)
+            {
+                <MudMenu Icon="@Icons.Material.Filled.AccountCircle" Color="Color.Inherit" AriaLabel="حساب کاربری" Dense="true"
+                         AnchorOrigin="Origin.BottomLeft" TransformOrigin="Origin.TopLeft">
+                    <div class="px-4 py-2 ksc-account">
+                        <MudText Typo="Typo.subtitle2">@user.DisplayName</MudText>
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">@user.Email</MudText>
+                    </div>
+                    <MudDivider />
+                    @if (user.Memberships.Count > 1)
+                    {
+                        <MudText Typo="Typo.overline" Class="px-4 pt-2">سازمان</MudText>
+                        @foreach (var membership in user.Memberships)
+                        {
+                            var id = membership.TenantId;
+                            <MudMenuItem OnClick="() => Session.SelectTenantAsync(id)"
+                                         Icon="@(id == Session.TenantId ? Icons.Material.Filled.CheckCircle : Icons.Material.Outlined.Circle)">@membership.TenantName</MudMenuItem>
+                        }
+                        <MudDivider />
+                    }
+                    else if (Session.CurrentTenant is { } only)
+                    {
+                        <MudText Typo="Typo.body2" Class="px-4 py-2">@only.TenantName</MudText>
+                        <MudDivider />
+                    }
+                    <MudMenuItem OnClick="SignOutAsync" Icon="@Icons.Material.Filled.Logout">خروج</MudMenuItem>
+                </MudMenu>
+            }
         </MudAppBar>
 
-        <MudDrawer @bind-Open="_drawerOpen" Variant="DrawerVariant.Responsive" Breakpoint="Breakpoint.Md"
-                   ClipMode="DrawerClipMode.Always" Elevation="0" Class="ksc-drawer" aria-label="منوی اصلی">
-            <nav aria-label="منوی اصلی" class="pt-3">
-                <MudNavMenu>
-                    @foreach (var item in NavItems.Main)
-                    {
-                        <MudNavLink Href="@item.Href" Icon="@item.Icon"
-                                    Match="@(item.ExactMatch ? NavLinkMatch.All : NavLinkMatch.Prefix)">@item.Title</MudNavLink>
-                    }
-                </MudNavMenu>
-            </nav>
-        </MudDrawer>
+        @if (Session.IsSignedIn)
+        {
+            <MudDrawer @bind-Open="_drawerOpen" Class="ksc-drawer" Variant="DrawerVariant.Responsive" Breakpoint="Breakpoint.Md"
+                       ClipMode="DrawerClipMode.Always" Elevation="0" aria-label="منوی اصلی">
+                <nav aria-label="منوی اصلی" class="pt-3">
+                    <MudNavMenu>
+                        @foreach (var item in NavItems.Main)
+                        {
+                            <MudNavLink Href="@item.Href" Icon="@item.Icon"
+                                        Match="@(item.ExactMatch ? NavLinkMatch.All : NavLinkMatch.Prefix)">@item.Title</MudNavLink>
+                        }
+                    </MudNavMenu>
+                </nav>
+            </MudDrawer>
+        }
 
         <MudMainContent>
             <MudContainer MaxWidth="MaxWidth.ExtraLarge" Class="py-6">
-                @Body
+                @if (!Session.Initialized)
+                {
+                    <div class="ksc-loading" role="status" aria-label="در حال بارگذاری"><MudProgressCircular Indeterminate="true" /></div>
+                }
+                else if (Session.IsSignedIn || OnLoginPage)
+                {
+                    @Body
+                }
             </MudContainer>
         </MudMainContent>
     </MudLayout>
@@ -53,6 +95,58 @@
 @code {
     private bool _drawerOpen = true;
     private bool _dark;
+
+    private bool OnLoginPage =>
+        Navigation.ToBaseRelativePath(Navigation.Uri).StartsWith("login", StringComparison.OrdinalIgnoreCase);
+
+    protected override void OnInitialized()
+    {
+        Session.Changed += OnSessionChanged;
+        Navigation.LocationChanged += OnLocationChanged;
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            await Session.RestoreAsync();
+        }
+    }
+
+    private void OnSessionChanged() => _ = InvokeAsync(() =>
+    {
+        Guard();
+        StateHasChanged();
+    });
+
+    private void OnLocationChanged(object? sender, Microsoft.AspNetCore.Components.Routing.LocationChangedEventArgs e) =>
+        _ = InvokeAsync(() =>
+        {
+            Guard();
+            StateHasChanged();
+        });
+
+    /// <summary>Sends anonymous visitors to the sign-in page, remembering where they wanted to go.</summary>
+    private void Guard()
+    {
+        if (Session.Initialized && !Session.IsSignedIn && !OnLoginPage)
+        {
+            var back = "/" + Navigation.ToBaseRelativePath(Navigation.Uri);
+            Navigation.NavigateTo(back == "/" ? "/login" : $"/login?returnUrl={Uri.EscapeDataString(back)}", replace: true);
+        }
+    }
+
+    private async Task SignOutAsync()
+    {
+        await Session.LogoutAsync();
+        Navigation.NavigateTo("/login", replace: true);
+    }
+
+    public void Dispose()
+    {
+        Session.Changed -= OnSessionChanged;
+        Navigation.LocationChanged -= OnLocationChanged;
+    }
 
     private void ToggleDrawer() => _drawerOpen = !_drawerOpen;
 

@@ -124,3 +124,20 @@ public sealed class EfIdentityAdminStore(KscDbContext db) : IIdentityAdminStore
 
     public Task SaveChangesAsync(CancellationToken cancellationToken) => db.SaveChangesAsync(cancellationToken);
 }
+
+/// <summary>Notification addresses come from user accounts: an active member of the tenant with an active account.</summary>
+public sealed class DbContactDirectory(KscDbContext db) : Application.Notifications.IContactDirectory
+{
+    public async Task<Application.Notifications.Contact?> FindAsync(Guid tenantId, Guid userId, CancellationToken cancellationToken)
+    {
+        var member = await db.Memberships.AsNoTracking()
+            .AnyAsync(m => m.TenantId == tenantId && m.UserId == userId && m.Status == MembershipStatus.Active, cancellationToken);
+        if (!member)
+        {
+            return null;
+        }
+
+        var user = await db.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Id == userId && u.IsActive, cancellationToken);
+        return user is null ? null : new Application.Notifications.Contact(user.Email, user.DisplayName);
+    }
+}

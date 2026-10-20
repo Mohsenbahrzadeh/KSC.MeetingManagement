@@ -1,6 +1,7 @@
 using KSC.MeetingManagement.Calendar;
 using KSC.MeetingManagement.Web.Components;
 using KSC.MeetingManagement.Web.Services;
+using Microsoft.AspNetCore.Components.Server.Circuits;
 using MudBlazor.Services;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -9,16 +10,19 @@ builder.Services.AddRazorComponents()
     .AddInteractiveServerComponents();
 builder.Services.AddMudServices();
 
-// REST API used by the pages. TenantId is a development stand-in until sign-in (ADR-0003) provides the tenant.
-builder.Services.AddHttpClient(ApiMeetingCalendarDataProvider.ClientName, (sp, client) =>
-{
-    var config = sp.GetRequiredService<IConfiguration>();
-    client.BaseAddress = new Uri(config["Api:BaseUrl"] ?? "http://localhost:5000/");
-    if (!string.IsNullOrWhiteSpace(config["Api:TenantId"]))
-    {
-        client.DefaultRequestHeaders.Add("X-Tenant-Id", config["Api:TenantId"]);
-    }
-});
+// REST API used by the pages. Requests carry the signed-in user's token and chosen organisation (ApiAuthHandler);
+// the auth client has no handler because its calls create the session.
+builder.Services.AddSingleton<CircuitServicesAccessor>();
+builder.Services.AddScoped<CircuitHandler, ServicesAccessorCircuitHandler>();
+builder.Services.AddTransient<ApiAuthHandler>();
+static void ConfigureApi(IServiceProvider sp, HttpClient client) =>
+    client.BaseAddress = new Uri(sp.GetRequiredService<IConfiguration>()["Api:BaseUrl"] ?? "http://localhost:5000/");
+builder.Services.AddHttpClient(ApiMeetingCalendarDataProvider.ClientName, ConfigureApi).AddHttpMessageHandler<ApiAuthHandler>();
+builder.Services.AddHttpClient(AuthApiClient.ClientName, ConfigureApi);
+builder.Services.AddSingleton(TimeProvider.System);
+builder.Services.AddScoped<AuthApiClient>();
+builder.Services.AddScoped<ISessionStore, ProtectedSessionStore>();
+builder.Services.AddScoped<SessionState>();
 builder.Services.AddScoped<IMeetingCalendarDataProvider, ApiMeetingCalendarDataProvider>();
 builder.Services.AddScoped<MeetingsApiClient>();
 

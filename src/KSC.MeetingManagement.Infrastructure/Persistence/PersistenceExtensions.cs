@@ -98,6 +98,7 @@ public static class PersistenceExtensions
         services.AddScoped<AttachmentService>();
         services.AddKscMedia(configuration);
         services.AddKscNotifications(configuration);
+        services.Replace(ServiceDescriptor.Scoped<Application.Notifications.IContactDirectory, DbContactDirectory>());
         services.AddScoped<EfAuditLog>();
         services.AddScoped<IAuditLog>(sp => sp.GetRequiredService<EfAuditLog>());
         services.AddScoped<IAuditQuery>(sp => sp.GetRequiredService<EfAuditLog>());
