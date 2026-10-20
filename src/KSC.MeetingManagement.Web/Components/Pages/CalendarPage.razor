@@ -1,0 +1,14 @@
+@page "/calendar"
+@using KSC.MeetingManagement.Calendar
+@using KSC.MeetingManagement.Calendar.Components
+@using KSC.MeetingManagement.Web.Services
+@inject IMeetingCalendarDataProvider Provider
+
+<PageTitle>تقویم | مدیریت جلسات</PageTitle>
+
+<MudText Typo="Typo.h4" Class="mb-2" tabindex="-1">تقویم جلسات</MudText>
+<KscCalendar @bind-View="_view" Provider="Provider" />
+
+@code {
+    private CalendarView _view = new(CalendarViewMode.Month, TehranClock.Today());
+}
