@@ -1,4 +1,4 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
@@ -23,6 +23,7 @@
     <ProjectReference Include="..\..\src\KSC.MeetingManagement.Domain\KSC.MeetingManagement.Domain.csproj" />
     <ProjectReference Include="..\..\src\KSC.MeetingManagement.Application\KSC.MeetingManagement.Application.csproj" />
     <ProjectReference Include="..\..\src\KSC.MeetingManagement.Calendar\KSC.MeetingManagement.Calendar.csproj" />
+    <ProjectReference Include="..\..\src\KSC.MeetingManagement.Web\KSC.MeetingManagement.Web.csproj" />
   </ItemGroup>
 
 </Project>
