@@ -109,3 +109,13 @@ h1:focus { outline: none; }
 .ksc-login { max-inline-size: 28rem; margin: 4vh auto 0; }
 .ksc-login .ksc-card { padding: 2rem; }
 .ksc-loading { display: grid; place-items: center; min-block-size: 40vh; }
+
+/* ---- Meeting room ---- */
+.ksc-room-lobby { max-inline-size: 36rem; margin-inline: auto; }
+.ksc-preview { inline-size: 100%; aspect-ratio: 16 / 9; background: #0f172a; border-radius: var(--ksc-radius-sm); object-fit: cover; transform: scaleX(-1); }
+.ksc-room-toggles { display: flex; gap: .5rem; justify-content: center; margin-block: .75rem; }
+.ksc-room-bar { display: flex; align-items: center; gap: .5rem; flex-wrap: wrap; padding: .5rem .75rem; margin-block-end: 1rem; border-radius: var(--ksc-radius); background: var(--mud-palette-surface); box-shadow: var(--ksc-shadow); }
+.ksc-room-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr)); gap: .75rem; }
+.ksc-tile-video { position: relative; margin: 0; border-radius: var(--ksc-radius-sm); overflow: hidden; background: #0f172a; aspect-ratio: 16 / 9; }
+.ksc-tile-video video { inline-size: 100%; block-size: 100%; object-fit: contain; }
+.ksc-tile-video figcaption { position: absolute; inset-inline: 0; inset-block-end: 0; padding: .25rem .6rem; color: #fff; font-size: .85rem; background: linear-gradient(transparent, rgb(0 0 0 / .65)); }
