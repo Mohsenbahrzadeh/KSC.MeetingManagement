@@ -80,6 +80,9 @@ public sealed class EfUserRepository(KscDbContext db) : IUserRepository
 
     public Task<bool> AnyAsync(CancellationToken cancellationToken) => db.Users.AnyAsync(cancellationToken);
 
+    public async Task<IReadOnlyList<User>> FindByIdsAsync(IReadOnlyCollection<Guid> ids, CancellationToken cancellationToken) =>
+        await db.Users.AsNoTracking().Where(u => ids.Contains(u.Id)).ToListAsync(cancellationToken);
+
     public async Task AddAsync(User user, CancellationToken cancellationToken) => await db.Users.AddAsync(user, cancellationToken);
 
     public Task<RefreshToken?> FindRefreshAsync(string tokenHash, CancellationToken cancellationToken) =>
@@ -90,6 +93,34 @@ public sealed class EfUserRepository(KscDbContext db) : IUserRepository
 
     public async Task AddRefreshAsync(RefreshToken token, CancellationToken cancellationToken) =>
         await db.RefreshTokens.AddAsync(token, cancellationToken);
+
+    public Task SaveChangesAsync(CancellationToken cancellationToken) => db.SaveChangesAsync(cancellationToken);
+}
+
+public sealed class EfIdentityAdminStore(KscDbContext db) : IIdentityAdminStore
+{
+    public Task<bool> AnyTenantAsync(CancellationToken cancellationToken) => db.Tenants.AnyAsync(cancellationToken);
+
+    public async Task AddTenantAsync(Tenant tenant, CancellationToken cancellationToken) => await db.Tenants.AddAsync(tenant, cancellationToken);
+
+    public async Task<IReadOnlyList<Membership>> ListMembershipsAsync(Guid tenantId, CancellationToken cancellationToken) =>
+        (await db.Memberships.AsNoTracking().Where(m => m.TenantId == tenantId).ToListAsync(cancellationToken)).Select(m => m.ToDomain()).ToList();
+
+    public async Task SaveMembershipAsync(Membership membership, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(membership);
+        var row = await db.Memberships.FirstOrDefaultAsync(m => m.TenantId == membership.TenantId && m.UserId == membership.UserId, cancellationToken);
+        var updated = MembershipRow.From(membership);
+        if (row is null)
+        {
+            await db.Memberships.AddAsync(updated, cancellationToken);
+        }
+        else
+        {
+            row.Roles = updated.Roles;
+            row.Status = updated.Status;
+        }
+    }
 
     public Task SaveChangesAsync(CancellationToken cancellationToken) => db.SaveChangesAsync(cancellationToken);
 }

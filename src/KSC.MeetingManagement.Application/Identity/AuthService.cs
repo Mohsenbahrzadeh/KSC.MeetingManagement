@@ -60,6 +60,8 @@ public interface IUserRepository
 
     Task<bool> AnyAsync(CancellationToken cancellationToken);
 
+    Task<IReadOnlyList<User>> FindByIdsAsync(IReadOnlyCollection<Guid> ids, CancellationToken cancellationToken);
+
     Task AddAsync(User user, CancellationToken cancellationToken);
 
     Task<RefreshToken?> FindRefreshAsync(string tokenHash, CancellationToken cancellationToken);
