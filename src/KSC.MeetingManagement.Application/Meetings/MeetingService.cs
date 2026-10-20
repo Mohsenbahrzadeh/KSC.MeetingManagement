@@ -87,6 +87,30 @@ public sealed class MeetingService(
         Guid id, long expectedVersion, DateTimeOffset start, DateTimeOffset end, bool allowConflicts, CancellationToken cancellationToken) =>
         MutateAsync(id, expectedVersion, m => m.Schedule(start, end), cancellationToken, allowConflicts ? null : EnsureNoConflictsForAttendeesAsync, NotifyChangedAsync);
 
+    /// <summary>Marks the meeting as started now (Scheduled to InProgress) and records the actual start time.</summary>
+    public Task<MeetingDto?> StartAsync(Guid id, long expectedVersion, CancellationToken cancellationToken) =>
+        MutateAsync(id, expectedVersion, m => m.Start(clock.GetUtcNow()), cancellationToken);
+
+    /// <summary>
+    /// Ends the meeting now and records the actual end time. A meeting that was never started is started first, so it can be closed
+    /// in one step. After this the room no longer admits anyone.
+    /// </summary>
+    public Task<MeetingDto?> EndAsync(Guid id, long expectedVersion, CancellationToken cancellationToken) =>
+        MutateAsync(
+            id,
+            expectedVersion,
+            m =>
+            {
+                var now = clock.GetUtcNow();
+                if (m.Status == MeetingStatus.Scheduled)
+                {
+                    m.Start(now);
+                }
+
+                m.Complete(now);
+            },
+            cancellationToken);
+
     public Task<MeetingDto?> CancelAsync(Guid id, long expectedVersion, string reason, CancellationToken cancellationToken) =>
         MutateAsync(id, expectedVersion, m => m.Cancel(reason), cancellationToken, afterChange: NotifyCancelledAsync);
 

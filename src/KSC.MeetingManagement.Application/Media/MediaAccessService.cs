@@ -14,6 +14,9 @@ public enum MediaJoinOutcome
     NotOnline,
     NotOpen,
     NotConfigured,
+
+    /// <summary>The person asked to enter and is waiting for the host; ask again shortly.</summary>
+    Waiting,
 }
 
 public sealed record MediaJoinResult(MediaJoinOutcome Outcome, MediaToken? Token = null)
@@ -28,6 +31,7 @@ public sealed record MediaJoinResult(MediaJoinOutcome Outcome, MediaToken? Token
 public sealed class MediaAccessService(
     IMeetingRepository meetings,
     IParticipantRepository participants,
+    IRoomEntryRepository entries,
     IMediaTokenService tokens,
     MediaOptions options,
     ITenantContext tenant,
@@ -75,7 +79,16 @@ public sealed class MediaAccessService(
             return new MediaJoinResult(MediaJoinOutcome.NotAllowed);
         }
 
-        return Issue(meeting, $"u-{userId:N}", displayName, granted);
+        var identity = $"u-{userId:N}";
+        if (granted == MediaRole.Host)
+        {
+            // A host is never kept out by the lobby, but a removal is still respected.
+            var hostEntry = await entries.FindAsync(meetingId, identity, cancellationToken);
+            return hostEntry?.Status == RoomEntryStatus.Removed ? new MediaJoinResult(MediaJoinOutcome.NotAllowed) : Issue(meeting, identity, displayName, granted);
+        }
+
+        var gate = await GateAsync(meeting, identity, RoomEntryKind.Member, displayName, options.LobbyForMembers, cancellationToken);
+        return gate == MediaJoinOutcome.Granted ? Issue(meeting, identity, displayName, granted) : new MediaJoinResult(gate);
     }
 
     /// <summary>
@@ -107,7 +120,40 @@ public sealed class MediaAccessService(
         }
 
         await participants.SaveChangesAsync(cancellationToken);
-        return Issue(meeting, $"g-{participant.Id:N}", participant.GuestName, MediaRole.Guest);
+
+        var guestIdentity = $"g-{participant.Id:N}";
+        var guestGate = await GateAsync(meeting, guestIdentity, RoomEntryKind.Guest, participant.GuestName, options.LobbyForGuests, cancellationToken);
+        return guestGate == MediaJoinOutcome.Granted ? Issue(meeting, guestIdentity, participant.GuestName, MediaRole.Guest) : new MediaJoinResult(guestGate);
+    }
+
+    /// <summary>
+    /// Door check: removed or denied people are refused; with the lobby on, a newcomer is recorded as waiting until the host admits them;
+    /// with it off, a newcomer is let in (and recorded) without waiting.
+    /// </summary>
+    private async Task<MediaJoinOutcome> GateAsync(
+        Meeting meeting, string identity, RoomEntryKind kind, string? displayName, bool lobby, CancellationToken cancellationToken)
+    {
+        var entry = await entries.FindAsync(meeting.Id, identity, cancellationToken);
+        if (entry is null)
+        {
+            if (!lobby)
+            {
+                return MediaJoinOutcome.Granted;
+            }
+
+            await entries.AddAsync(
+                new RoomEntry(Guid.NewGuid(), tenant.RequiredTenantId, meeting.Id, identity, kind, displayName ?? string.Empty, clock.GetUtcNow()),
+                cancellationToken);
+            await entries.SaveChangesAsync(cancellationToken);
+            return MediaJoinOutcome.Waiting;
+        }
+
+        return entry.Status switch
+        {
+            RoomEntryStatus.Admitted => MediaJoinOutcome.Granted,
+            RoomEntryStatus.Waiting => lobby ? MediaJoinOutcome.Waiting : MediaJoinOutcome.Granted,
+            _ => MediaJoinOutcome.NotAllowed,
+        };
     }
 
     private MediaJoinResult Issue(Meeting meeting, string identity, string? displayName, MediaRole role)

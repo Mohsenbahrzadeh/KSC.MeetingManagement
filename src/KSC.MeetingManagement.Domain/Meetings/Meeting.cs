@@ -61,6 +61,12 @@ public sealed class Meeting
     public DateTimeOffset? EndUtc { get; private set; }
     public string? CancellationReason { get; private set; }
 
+    /// <summary>When the meeting actually began (set by Start); null before it started.</summary>
+    public DateTimeOffset? StartedAtUtc { get; private set; }
+
+    /// <summary>When the meeting actually ended (set by Complete); null while it is not finished.</summary>
+    public DateTimeOffset? EndedAtUtc { get; private set; }
+
     /// <summary>The committee this meeting belongs to, if any (reports can filter by it).</summary>
     public Guid? CommitteeId { get; private set; }
 
@@ -149,6 +155,20 @@ public sealed class Meeting
         StartUtc = null;
         EndUtc = null;
         Version++;
+    }
+
+    /// <summary>Begins the meeting and records the actual start time.</summary>
+    public void Start(DateTimeOffset nowUtc)
+    {
+        Start();
+        StartedAtUtc = nowUtc;
+    }
+
+    /// <summary>Ends the meeting and records the actual end time.</summary>
+    public void Complete(DateTimeOffset nowUtc)
+    {
+        Complete();
+        EndedAtUtc = nowUtc;
     }
 
     public void Start()

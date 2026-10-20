@@ -21,6 +21,9 @@ public static class KscTelemetry
     public static Counter<long> AuditFailures { get; } =
         AppMeter.CreateCounter<long>("ksc.audit.failures", description: "Audit events that could not be written.");
 
+    public static Counter<long> RoomControlFailures { get; } =
+        AppMeter.CreateCounter<long>("ksc.room.control_failures", description: "Failed calls to the media server (close room, remove participant).");
+
     public static Counter<long> AuthorizationDenied { get; } =
         AppMeter.CreateCounter<long>("ksc.authorization.denied", description: "Requests refused for lack of permission.");
 }

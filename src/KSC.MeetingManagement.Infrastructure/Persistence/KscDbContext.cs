@@ -10,6 +10,8 @@ public sealed class KscDbContext(DbContextOptions<KscDbContext> options, ITenant
 {
     public DbSet<Meeting> Meetings => Set<Meeting>();
 
+    public DbSet<RoomEntry> RoomEntries => Set<RoomEntry>();
+
     public DbSet<OutboxMessage> OutboxMessages => Set<OutboxMessage>();
 
     public DbSet<AuditEvent> AuditEvents => Set<AuditEvent>();
@@ -58,6 +60,24 @@ public sealed class KscDbContext(DbContextOptions<KscDbContext> options, ITenant
 
             // Defence in depth: tenant filtering never replaces authorization checks.
             b.HasQueryFilter(m => m.TenantId == CurrentTenantId);
+        });
+
+        modelBuilder.Entity<RoomEntry>(b =>
+        {
+            b.ToTable("room_entries");
+            b.HasKey(e => e.Id);
+            b.Property(e => e.TenantId).IsRequired();
+            b.Property(e => e.MeetingId).IsRequired();
+            b.Property(e => e.Identity).HasMaxLength(128).IsRequired();
+            b.Property(e => e.Kind).HasConversion<string>().HasMaxLength(20);
+            b.Property(e => e.DisplayName).HasMaxLength(RoomEntry.MaxNameLength).IsRequired();
+            b.Property(e => e.Status).HasConversion<string>().HasMaxLength(20);
+            b.Property(e => e.RequestedAtUtc);
+            b.Property(e => e.DecidedAtUtc);
+            b.Property(e => e.DecidedByUserId);
+            b.Property(e => e.DecisionVersion).IsConcurrencyToken();
+            b.HasIndex(e => new { e.TenantId, e.MeetingId, e.Identity }).IsUnique();
+            b.HasQueryFilter(e => e.TenantId == CurrentTenantId);
         });
 
         modelBuilder.Entity<OutboxMessage>(b =>

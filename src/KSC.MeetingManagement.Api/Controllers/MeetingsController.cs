@@ -30,6 +30,8 @@ public sealed record UpdateMeetingRequest(
 
 public sealed record RescheduleMeetingRequest(long ExpectedVersion, DateTimeOffset Start, DateTimeOffset End, bool AllowConflicts = false);
 
+public sealed record VersionRequest(long ExpectedVersion);
+
 public sealed record CancelMeetingRequest(long ExpectedVersion, string Reason);
 
 public sealed record PostponeMeetingRequest(long ExpectedVersion);
@@ -37,7 +39,7 @@ public sealed record PostponeMeetingRequest(long ExpectedVersion);
 [ApiController]
 [Route("api/v1/meetings")]
 [RequiresTenant]
-public sealed class MeetingsController(MeetingService meetings) : ControllerBase
+public sealed class MeetingsController(MeetingService meetings, Application.Media.RoomControlService roomControl) : ControllerBase
 {
     [Audited("meeting.create", "meeting", "id")]
     [HttpPost]
@@ -92,6 +94,35 @@ public sealed class MeetingsController(MeetingService meetings) : ControllerBase
     {
         ArgumentNullException.ThrowIfNull(request);
         return Mutate(() => meetings.RescheduleAsync(id, request.ExpectedVersion, request.Start, request.End, request.AllowConflicts, cancellationToken));
+    }
+
+    /// <summary>Marks the meeting as started now and records the actual start time.</summary>
+    [HttpPost("{id:guid}/start")]
+    [HasPermission(Permissions.MeetingsEdit)]
+    [Audited("meeting.start", "meeting", "id")]
+    public Task<IActionResult> StartMeeting(Guid id, VersionRequest request, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        return Mutate(() => meetings.StartAsync(id, request.ExpectedVersion, cancellationToken));
+    }
+
+    /// <summary>Ends the meeting, records the actual end time, and closes the live room so nobody new can enter.</summary>
+    [HttpPost("{id:guid}/end")]
+    [HasPermission(Permissions.MeetingsEdit)]
+    [Audited("meeting.end", "meeting", "id")]
+    public Task<IActionResult> EndMeeting(Guid id, VersionRequest request, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        return Mutate(async () =>
+        {
+            var ended = await meetings.EndAsync(id, request.ExpectedVersion, cancellationToken);
+            if (ended is not null)
+            {
+                await roomControl.CloseRoomAsync(id, cancellationToken);
+            }
+
+            return ended;
+        });
     }
 
     [Audited("meeting.cancel", "meeting", "id")]
