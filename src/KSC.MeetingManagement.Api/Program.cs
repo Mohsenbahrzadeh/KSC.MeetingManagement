@@ -1,4 +1,7 @@
 using KSC.MeetingManagement.Api.Observability;
+using KSC.MeetingManagement.Api.Tenancy;
+using KSC.MeetingManagement.Application.Tenants;
+using KSC.MeetingManagement.Infrastructure.Tenants;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -9,6 +12,12 @@ builder.Services.AddControllers();
 builder.Services.AddOpenApi();
 builder.Services.AddProblemDetails();
 builder.Services.AddExceptionHandler<ApiExceptionHandler>();
+
+builder.Services.AddScoped<TenantContext>();
+builder.Services.AddScoped<ITenantContext>(sp => sp.GetRequiredService<TenantContext>());
+builder.Services.AddScoped<ITenantContextSetter>(sp => sp.GetRequiredService<TenantContext>());
+builder.Services.AddSingleton<InMemoryTenantStore>();
+builder.Services.AddSingleton<ITenantStore>(sp => sp.GetRequiredService<InMemoryTenantStore>());
 
 var app = builder.Build();
 
@@ -21,6 +30,8 @@ if (app.Environment.IsDevelopment())
 }
 
 app.UseHttpsRedirection();
+app.UseRouting();
+app.UseMiddleware<TenantResolutionMiddleware>();
 app.UseAuthorization();
 app.MapControllers();
 

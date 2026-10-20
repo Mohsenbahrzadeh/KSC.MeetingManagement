@@ -1,3 +1,5 @@
+using KSC.MeetingManagement.Api.Tenancy;
+using KSC.MeetingManagement.Application.Tenants;
 using Microsoft.AspNetCore.Mvc;
 
 namespace KSC.MeetingManagement.Api.Controllers;
@@ -11,4 +13,8 @@ public sealed class PingController : ControllerBase
 
     [HttpGet("fail")]
     public IActionResult Fail() => throw new InvalidOperationException("ping failure test");
+
+    [HttpGet("tenant")]
+    [RequiresTenant]
+    public IActionResult Tenant([FromServices] ITenantContext tenant) => Ok(new { tenantId = tenant.RequiredTenantId });
 }
