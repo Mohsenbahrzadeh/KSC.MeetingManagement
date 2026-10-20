@@ -10,6 +10,7 @@ using Microsoft.Extensions.DependencyInjection.Extensions;
 using KSC.MeetingManagement.Application.Actions;
 using KSC.MeetingManagement.Application.Agenda;
 using KSC.MeetingManagement.Application.Audit;
+using KSC.MeetingManagement.Application.Chat;
 using KSC.MeetingManagement.Application.Attachments;
 using KSC.MeetingManagement.Application.Committees;
 using KSC.MeetingManagement.Application.Minutes;
@@ -47,6 +48,8 @@ public static class PersistenceExtensions
         services.TryAddSingleton<IMediaTokenService>(sp => new LiveKitTokenService(sp.GetRequiredService<MediaOptions>(), sp.GetRequiredService<TimeProvider>()));
         services.AddScoped<IRoomEntryRepository, EfRoomEntryRepository>();
         services.AddScoped<IPresenceRepository, EfPresenceRepository>();
+        services.AddScoped<IChatRepository, EfChatRepository>();
+        services.AddScoped<ChatService>();
         services.AddScoped<PresenceService>();
         services.TryAddSingleton(sp => new LiveKitWebhookVerifier(sp.GetRequiredService<MediaOptions>(), sp.GetRequiredService<TimeProvider>()));
         services.AddScoped<MediaAccessService>();
