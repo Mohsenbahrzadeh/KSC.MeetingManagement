@@ -35,7 +35,7 @@
         </HeaderContent>
         <RowTemplate>
             <MudTd DataLabel="شماره">@(context.Number is null ? "—" : PersianText.Digits(context.Number))</MudTd>
-            <MudTd DataLabel="عنوان">@context.Title</MudTd>
+            <MudTd DataLabel="عنوان"><MudLink Href="@($"/meetings/{context.Id}")">@context.Title</MudLink></MudTd>
             <MudTd DataLabel="نوع">@ModeLabel(context.Mode)</MudTd>
             <MudTd DataLabel="وضعیت">
                 <MudChip T="string" Size="Size.Small" Class="@CalendarStatusText.CssClass((CalendarItemStatus)(int)context.Status)">@CalendarStatusText.Label((CalendarItemStatus)(int)context.Status)</MudChip>
