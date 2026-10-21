@@ -32,7 +32,8 @@ Five wrong passwords lock the account for 15 minutes. Send `Authorization: Beare
 ## Not verified here
 
 Checked by hand on PostgreSQL 17.6 (2026-10-21): all migrations including `AddIdentity` apply; setup, login, meeting create (idempotent repeat, conflict 409, validation 422, tenant 403), reschedule and optimistic-concurrency (two parallel postpones: one 200, one 409) behave as expected.
-Not yet checked on a real PostgreSQL: refresh-token rotation/reuse revocation, account lockout, member management, and the other modules (agenda, minutes, audit, reports). The API does not apply migrations itself; run `dotnet ef database update`.
+Also checked: refresh-token rotation (reusing an old token returns 401 and revokes the newer one), member creation (201) and account lockout (429 after repeated wrong passwords, even with the correct password while locked).
+Not yet checked on a real PostgreSQL: role changes/deactivation, and the other modules (agenda, minutes, audit, reports). The API does not apply migrations itself; run `dotnet ef database update`.
 
 ## Web application
 
