@@ -1,6 +1,76 @@
 @page "/committees"
+@using KSC.MeetingManagement.Application.Committees
+@using KSC.MeetingManagement.Calendar
+@using KSC.MeetingManagement.Web.Components.Committees
+@using KSC.MeetingManagement.Web.Components.Common
+@using KSC.MeetingManagement.Web.Services
+@inject CommitteesApiClient Api
+@inject IDialogService Dialogs
 
 <PageTitle>کمیته‌ها | مدیریت جلسات</PageTitle>
 
 <MudText Typo="Typo.h4" Class="ksc-page-title" tabindex="-1">کمیته‌ها</MudText>
-<MudAlert Severity="Severity.Info" Variant="Variant.Outlined">مدیریت کمیته‌ها در گام بعدی تکمیل می‌شود.</MudAlert>
+
+<MudStack Row="true" Class="mb-3">
+    <MudSpacer />
+    <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="() => ShowAsync(null)">کمیتهٔ جدید</MudButton>
+</MudStack>
+
+<StatePanel State="_panel" ErrorText="@_error" OnRetry="LoadAsync" EmptyText="هنوز کمیته‌ای تعریف نشده است.">
+    <MudTable Items="_items" Dense="true" Hover="true" Elevation="0">
+        <HeaderContent>
+            <MudTh>نام</MudTh>
+            <MudTh>توضیحات</MudTh>
+            <MudTh>اعضا</MudTh>
+            <MudTh>وضعیت</MudTh>
+            <MudTh><span class="visually-hidden">عملیات</span></MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd DataLabel="نام">@context.Name</MudTd>
+            <MudTd DataLabel="توضیحات">@(context.Description ?? "—")</MudTd>
+            <MudTd DataLabel="اعضا">@PersianText.Digits(context.Members.Count)</MudTd>
+            <MudTd DataLabel="وضعیت">
+                <MudChip T="string" Size="Size.Small" Color="@(context.IsActive ? Color.Success : Color.Default)">@(context.IsActive ? "فعال" : "غیرفعال")</MudChip>
+            </MudTd>
+            <MudTd>
+                <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="() => ShowAsync(context)" aria-label="@("ویرایش " + context.Name)">ویرایش</MudButton>
+            </MudTd>
+        </RowTemplate>
+    </MudTable>
+</StatePanel>
+
+@code {
+    private static readonly DialogOptions Options = new() { MaxWidth = MaxWidth.Small, FullWidth = true, CloseOnEscapeKey = true };
+
+    private List<CommitteeDto> _items = [];
+    private PanelState _panel = PanelState.Loading;
+    private string? _error;
+
+    protected override Task OnInitializedAsync() => LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        _panel = PanelState.Loading;
+        var result = await Api.ListAsync(CancellationToken.None);
+        if (!result.Succeeded || result.Value is null)
+        {
+            _error = result.Message ?? ApiResultReader.GenericFailure;
+            _panel = PanelState.Error;
+            return;
+        }
+
+        _items = result.Value;
+        _panel = _items.Count == 0 ? PanelState.Empty : PanelState.Ready;
+    }
+
+    private async Task ShowAsync(CommitteeDto? committee)
+    {
+        var parameters = new DialogParameters<CommitteeFormDialog> { { d => d.Committee, committee } };
+        var dialog = await Dialogs.ShowAsync<CommitteeFormDialog>(committee is null ? "کمیتهٔ جدید" : "ویرایش کمیته", parameters, Options);
+        var result = await dialog.Result;
+        if (result is { Canceled: false })
+        {
+            await LoadAsync();
+        }
+    }
+}
