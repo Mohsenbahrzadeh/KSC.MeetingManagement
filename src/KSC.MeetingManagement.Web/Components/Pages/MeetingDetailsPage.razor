@@ -1,0 +1,189 @@
+@page "/meetings/{MeetingId:guid}"
+@using KSC.MeetingManagement.Application.Meetings
+@using KSC.MeetingManagement.Calendar
+@using KSC.MeetingManagement.Domain.Meetings
+@using KSC.MeetingManagement.Web.Components.Common
+@using KSC.MeetingManagement.Web.Components.Meetings
+@using KSC.MeetingManagement.Web.Services
+@inject MeetingsApiClient Api
+@inject IDialogService Dialogs
+@inject ISnackbar Snackbar
+
+<PageTitle>@(_meeting?.Title ?? "جزئیات جلسه") | مدیریت جلسات</PageTitle>
+
+<MudButton Variant="Variant.Text" Href="/meetings" Size="Size.Small" Class="mb-2">« همهٔ جلسات</MudButton>
+
+<StatePanel State="_panel" ErrorText="@_error" OnRetry="LoadAsync">
+    @if (_meeting is { } m)
+    {
+        <MudText Typo="Typo.h4" Class="ksc-page-title" tabindex="-1">@m.Title</MudText>
+        <MudStack Row="true" Spacing="2" AlignItems="AlignItems.Center" Class="mb-3">
+            <MudChip T="string" Size="Size.Small" Class="@CalendarStatusText.CssClass((CalendarItemStatus)(int)m.Status)">@CalendarStatusText.Label((CalendarItemStatus)(int)m.Status)</MudChip>
+            @if (m.Number is not null)
+            {
+                <MudText Typo="Typo.body2">شمارهٔ جلسه: @PersianText.Digits(m.Number)</MudText>
+            }
+        </MudStack>
+
+        <MudPaper Class="pa-4 mb-3" Elevation="0" Outlined="true">
+            <dl class="ksc-details">
+                <dt>نوع برگزاری</dt>
+                <dd>@ModeLabel(m.Mode)</dd>
+                <dt>زمان</dt>
+                <dd>@TimeText(m)</dd>
+                @if (m.StartedAtUtc is { } startedAt)
+                {
+                    <dt>شروع واقعی</dt>
+                    <dd>@Stamp(startedAt)</dd>
+                }
+                @if (m.EndedAtUtc is { } endedAt)
+                {
+                    <dt>پایان واقعی</dt>
+                    <dd>@Stamp(endedAt)</dd>
+                }
+                <dt>توضیحات</dt>
+                <dd>@(string.IsNullOrWhiteSpace(m.Description) ? "—" : m.Description)</dd>
+            </dl>
+        </MudPaper>
+
+        @if (_actionError is not null)
+        {
+            <MudAlert Severity="Severity.Error" Variant="Variant.Outlined" role="alert" Class="mb-3">@_actionError</MudAlert>
+        }
+
+        <MudStack Row="true" Spacing="2" Wrap="Wrap.Wrap">
+            @if (m.Status is not (MeetingStatus.Cancelled or MeetingStatus.Completed))
+            {
+                <MudButton Variant="Variant.Outlined" OnClick="EditAsync" Disabled="_busy">ویرایش</MudButton>
+            }
+            @if (HasRoom(m))
+            {
+                <MudButton Variant="Variant.Outlined" Href="@($"/meetings/{m.Id}/room")">ورود به اتاق</MudButton>
+            }
+            @if (m.Status == MeetingStatus.Scheduled)
+            {
+                <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="() => RunAsync(StartText, v => Api.StartAsync(MeetingId, v, CancellationToken.None))" Disabled="_busy">شروع جلسه</MudButton>
+                <MudButton Variant="Variant.Outlined" OnClick="() => RunAsync(PostponeText, v => Api.PostponeAsync(MeetingId, v, CancellationToken.None))" Disabled="_busy">به تعویق انداختن</MudButton>
+            }
+            @if (m.Status == MeetingStatus.InProgress)
+            {
+                <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="() => RunAsync(EndText, v => Api.EndAsync(MeetingId, v, CancellationToken.None))" Disabled="_busy">پایان جلسه</MudButton>
+            }
+            @if (m.Status is MeetingStatus.Draft or MeetingStatus.Scheduled or MeetingStatus.Postponed)
+            {
+                <MudButton Variant="Variant.Text" Color="Color.Error" OnClick="CancelMeetingAsync" Disabled="_busy">لغو جلسه</MudButton>
+            }
+        </MudStack>
+    }
+</StatePanel>
+
+@code {
+    private const string StartText = "جلسه را اکنون شروع می‌کنید؟";
+    private const string PostponeText = "جلسه به تعویق می‌افتد و باید دوباره زمان‌بندی شود. ادامه می‌دهید؟";
+    private const string EndText = "جلسه پایان می‌یابد و اتاق بسته می‌شود. ادامه می‌دهید؟";
+
+    private static readonly DialogOptions Options = new() { MaxWidth = MaxWidth.Small, FullWidth = true, CloseOnEscapeKey = true };
+
+    private readonly CalendarLayout _layout = new(TehranClock.TimeZone);
+    private MeetingDto? _meeting;
+    private PanelState _panel = PanelState.Loading;
+    private string? _error;
+    private string? _actionError;
+    private bool _busy;
+
+    [Parameter] public Guid MeetingId { get; set; }
+
+    protected override Task OnParametersSetAsync() => LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        _panel = PanelState.Loading;
+        var result = await Api.GetAsync(MeetingId, CancellationToken.None);
+        if (!result.Succeeded || result.Value is null)
+        {
+            _error = result.Message ?? ApiResultReader.GenericFailure;
+            _panel = PanelState.Error;
+            return;
+        }
+
+        _meeting = result.Value;
+        _panel = PanelState.Ready;
+    }
+
+    private async Task RunAsync(string question, Func<long, Task<ApiResult<MeetingDto>>> action)
+    {
+        if (_meeting is null || await Dialogs.ShowMessageBoxAsync(new MessageBoxOptions { Message = question, YesText = "بله", CancelText = "انصراف" }) != true)
+        {
+            return;
+        }
+
+        _busy = true;
+        _actionError = null;
+        try
+        {
+            var result = await action(_meeting.Version);
+            if (result.Succeeded && result.Value is { } updated)
+            {
+                _meeting = updated;
+            }
+            else
+            {
+                _actionError = result.Message ?? ApiResultReader.GenericFailure;
+                if (result.Error == ApiErrorKind.VersionConflict)
+                {
+                    await LoadAsync();
+                }
+            }
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private async Task CancelMeetingAsync()
+    {
+        if (_meeting is null)
+        {
+            return;
+        }
+
+        var parameters = new DialogParameters<CancelMeetingDialog> { { d => d.MeetingId, _meeting.Id }, { d => d.Version, _meeting.Version } };
+        var dialog = await Dialogs.ShowAsync<CancelMeetingDialog>("لغو جلسه", parameters, Options);
+        var result = await dialog.Result;
+        if (result is { Canceled: false, Data: MeetingDto updated })
+        {
+            _meeting = updated;
+        }
+    }
+
+    private async Task EditAsync()
+    {
+        var parameters = new DialogParameters<MeetingFormDialog> { { d => d.Layout, _layout }, { d => d.MeetingId, MeetingId } };
+        var dialog = await Dialogs.ShowAsync<MeetingFormDialog>("ویرایش جلسه", parameters, Options);
+        var result = await dialog.Result;
+        if (result is { Canceled: false })
+        {
+            await LoadAsync();
+        }
+    }
+
+    private static string ModeLabel(MeetingMode mode) => mode switch
+    {
+        MeetingMode.InPerson => "حضوری",
+        MeetingMode.Online => "آنلاین",
+        MeetingMode.Hybrid => "ترکیبی",
+        _ => "—",
+    };
+
+    private static bool HasRoom(MeetingDto m) =>
+        m.Mode is MeetingMode.Online or MeetingMode.Hybrid && m.Status is MeetingStatus.Scheduled or MeetingStatus.InProgress;
+
+    private string Stamp(DateTimeOffset instant) =>
+        $"{PersianText.Format(_layout.DayOf(instant))} {PersianText.Time(_layout.TimeOf(instant))}";
+
+    private string TimeText(MeetingDto m) =>
+        m.StartUtc is { } start && m.EndUtc is { } end
+            ? $"{PersianText.Format(_layout.DayOf(start))} {PersianText.Time(_layout.TimeOf(start))}–{PersianText.Time(_layout.TimeOf(end))}"
+            : "زمان‌بندی نشده";
+}

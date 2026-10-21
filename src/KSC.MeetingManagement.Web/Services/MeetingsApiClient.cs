@@ -55,6 +55,21 @@ public sealed class MeetingsApiClient(IHttpClientFactory httpClientFactory)
                 cancellationToken),
             cancellationToken);
 
+    public Task<ApiResult<MeetingDto>> StartAsync(Guid id, long expectedVersion, CancellationToken cancellationToken) =>
+        PostVersionAsync(id, "start", new { expectedVersion }, cancellationToken);
+
+    public Task<ApiResult<MeetingDto>> EndAsync(Guid id, long expectedVersion, CancellationToken cancellationToken) =>
+        PostVersionAsync(id, "end", new { expectedVersion }, cancellationToken);
+
+    public Task<ApiResult<MeetingDto>> PostponeAsync(Guid id, long expectedVersion, CancellationToken cancellationToken) =>
+        PostVersionAsync(id, "postpone", new { expectedVersion }, cancellationToken);
+
+    public Task<ApiResult<MeetingDto>> CancelAsync(Guid id, long expectedVersion, string reason, CancellationToken cancellationToken) =>
+        PostVersionAsync(id, "cancel", new { expectedVersion, reason }, cancellationToken);
+
+    private Task<ApiResult<MeetingDto>> PostVersionAsync<TBody>(Guid id, string action, TBody body, CancellationToken cancellationToken) =>
+        SendAsync(c => c.PostAsJsonAsync(new Uri($"api/v1/meetings/{id}/{action}", UriKind.Relative), body, Json, cancellationToken), cancellationToken);
+
     /// <summary>Lists meetings, optionally filtered by status, one page at a time.</summary>
     public Task<ApiResult<List<MeetingDto>>> ListAsync(MeetingStatus? status, int skip, int take, CancellationToken cancellationToken) =>
         SendAsync<List<MeetingDto>>(

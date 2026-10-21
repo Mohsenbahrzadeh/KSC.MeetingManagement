@@ -1,0 +1,72 @@
+@using KSC.MeetingManagement.Web.Services
+@implements IDisposable
+@inject MeetingsApiClient Api
+@inject ISnackbar Snackbar
+
+<MudDialog>
+    <DialogContent>
+        <MudStack Spacing="2">
+            <MudText>لغو جلسه برگشت‌پذیر نیست و به شرکت‌کنندگان اطلاع داده می‌شود.</MudText>
+            <MudTextField @bind-Value="_reason" Label="دلیل لغو" Required="true" Lines="3" Immediate="true" MaxLength="500" Disabled="_saving"
+                          Error="@(_error is not null)" ErrorText="@_error" />
+            @if (_serverError is not null)
+            {
+                <MudAlert Severity="Severity.Error" Variant="Variant.Outlined" role="alert">@_serverError</MudAlert>
+            }
+        </MudStack>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel" Disabled="_saving">انصراف</MudButton>
+        <MudButton Color="Color.Error" Variant="Variant.Filled" OnClick="ConfirmAsync" Disabled="_saving">لغو جلسه</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    private readonly CancellationTokenSource _cts = new();
+    private string _reason = string.Empty;
+    private string? _error;
+    private string? _serverError;
+    private bool _saving;
+
+    [CascadingParameter] private IMudDialogInstance Dialog { get; set; } = default!;
+
+    [Parameter, EditorRequired] public Guid MeetingId { get; set; }
+
+    [Parameter, EditorRequired] public long Version { get; set; }
+
+    private async Task ConfirmAsync()
+    {
+        _serverError = null;
+        _error = string.IsNullOrWhiteSpace(_reason) ? "دلیل لغو را بنویسید." : null;
+        if (_error is not null)
+        {
+            return;
+        }
+
+        _saving = true;
+        try
+        {
+            var result = await Api.CancelAsync(MeetingId, Version, _reason.Trim(), _cts.Token);
+            if (result.Succeeded && result.Value is { } saved)
+            {
+                Snackbar.Add("جلسه لغو شد.", Severity.Success);
+                Dialog.Close(DialogResult.Ok(saved));
+                return;
+            }
+
+            _serverError = result.Message ?? ApiResultReader.GenericFailure;
+        }
+        finally
+        {
+            _saving = false;
+        }
+    }
+
+    private void Cancel() => Dialog.Cancel();
+
+    public void Dispose()
+    {
+        _cts.Cancel();
+        _cts.Dispose();
+    }
+}
