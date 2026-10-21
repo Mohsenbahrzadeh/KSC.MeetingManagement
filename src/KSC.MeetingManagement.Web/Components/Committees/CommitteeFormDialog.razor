@@ -1,0 +1,93 @@
+@using KSC.MeetingManagement.Application.Committees
+@using KSC.MeetingManagement.Web.Services
+@implements IDisposable
+@inject CommitteesApiClient Api
+@inject ISnackbar Snackbar
+
+<MudDialog>
+    <DialogContent>
+        <MudStack Spacing="2">
+            <MudTextField @bind-Value="_name" Label="نام کمیته" Required="true" Immediate="true" MaxLength="200"
+                          Error="@(_nameError is not null)" ErrorText="@_nameError" Disabled="_saving" />
+            <MudTextField @bind-Value="_description" Label="توضیحات" Lines="3" MaxLength="2000" Disabled="_saving" />
+            @if (Committee is not null)
+            {
+                <MudSwitch T="bool" @bind-Value="_isActive" Label="فعال" Disabled="_saving" />
+            }
+            @if (_serverError is not null)
+            {
+                <MudAlert Severity="Severity.Error" Variant="Variant.Outlined" role="alert">@_serverError</MudAlert>
+            }
+        </MudStack>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel" Disabled="_saving">انصراف</MudButton>
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="SaveAsync" Disabled="_saving">ذخیره</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    private readonly CancellationTokenSource _cts = new();
+    private string _name = string.Empty;
+    private string? _description;
+    private bool _isActive = true;
+    private string? _nameError;
+    private string? _serverError;
+    private bool _saving;
+
+    [CascadingParameter] private IMudDialogInstance Dialog { get; set; } = default!;
+
+    /// <summary>When set, the dialog edits this committee; otherwise it creates a new one.</summary>
+    [Parameter] public CommitteeDto? Committee { get; set; }
+
+    protected override void OnInitialized()
+    {
+        if (Committee is { } c)
+        {
+            _name = c.Name;
+            _description = c.Description;
+            _isActive = c.IsActive;
+        }
+    }
+
+    private async Task SaveAsync()
+    {
+        _serverError = null;
+        _nameError = string.IsNullOrWhiteSpace(_name) ? "نام کمیته را وارد کنید." : null;
+        if (_nameError is not null)
+        {
+            return;
+        }
+
+        _saving = true;
+        try
+        {
+            var name = _name.Trim();
+            var description = string.IsNullOrWhiteSpace(_description) ? null : _description.Trim();
+            var result = Committee is { } c
+                ? await Api.UpdateAsync(c.Id, name, description, _isActive, _cts.Token)
+                : await Api.CreateAsync(name, description, _cts.Token);
+
+            if (result.Succeeded && result.Value is { } saved)
+            {
+                Snackbar.Add(Committee is null ? "کمیته ایجاد شد." : "تغییرات ذخیره شد.", Severity.Success);
+                Dialog.Close(DialogResult.Ok(saved));
+                return;
+            }
+
+            _serverError = result.Message ?? ApiResultReader.GenericFailure;
+        }
+        finally
+        {
+            _saving = false;
+        }
+    }
+
+    private void Cancel() => Dialog.Cancel();
+
+    public void Dispose()
+    {
+        _cts.Cancel();
+        _cts.Dispose();
+    }
+}

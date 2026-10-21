@@ -26,6 +26,7 @@ builder.Services.AddScoped<SessionState>();
 builder.Services.AddScoped<RoomApiClient>();
 builder.Services.AddScoped<IMeetingCalendarDataProvider, ApiMeetingCalendarDataProvider>();
 builder.Services.AddScoped<MeetingsApiClient>();
+builder.Services.AddScoped<CommitteesApiClient>();
 
 var app = builder.Build();
 
