@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Restores a backup into a SCRATCH database and checks it (TASK-070). NOT TESTED against a real PostgreSQL.
+# Restores a backup into a SCRATCH database and checks it (TASK-070).
 # Usage: verify-restore.sh <backup-directory (decrypted)> <scratch-database-name>
 # Refuses to run against a database that already has tables, so it can never overwrite real data.
 set -euo pipefail
@@ -38,7 +38,7 @@ while IFS='|' read -r id sha key; do
   if [ ! -f "$f" ]; then missing=$((missing+1)); continue; fi
   actual="$(sha256sum "$f" | cut -d' ' -f1 | tr a-f A-F)"
   [ "$actual" = "$(echo "$sha" | tr a-f A-F)" ] || bad=$((bad+1))
-done < "$src/attachments.tsv"
+done < <(tr -d '\r' < "$src/attachments.tsv")
 rm -rf "$tmp"
 ok "attachment files missing" "$missing" "0"
 ok "attachment files with wrong hash" "$bad" "0"
