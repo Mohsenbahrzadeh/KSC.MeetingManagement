@@ -1,0 +1,125 @@
+@using KSC.MeetingManagement.Application.Participants
+@using KSC.MeetingManagement.Web.Services
+@implements IDisposable
+@inject ParticipantsApiClient Api
+@inject TimeProvider Clock
+
+<MudDialog>
+    <DialogContent>
+        <MudStack Spacing="2">
+            @if (_invitation is null)
+            {
+                <MudTextField @bind-Value="_name" Label="نام مهمان" Required="true" Immediate="true" MaxLength="200" Disabled="_saving"
+                              Error="@HasError("name")" ErrorText="@ErrorOf("name")" />
+                <MudTextField @bind-Value="_email" Label="ایمیل مهمان" InputType="InputType.Email" Required="true" Immediate="true" Disabled="_saving"
+                              Error="@HasError("email")" ErrorText="@ErrorOf("email")" />
+                <MudNumericField T="int" @bind-Value="_validDays" Label="اعتبار دعوت (روز)" Min="1" Max="@MaxValidDays" Disabled="_saving"
+                                 Error="@HasError("days")" ErrorText="@ErrorOf("days")" />
+                @if (_serverError is not null)
+                {
+                    <MudAlert Severity="Severity.Error" Variant="Variant.Outlined" role="alert">@_serverError</MudAlert>
+                }
+            }
+            else
+            {
+                <MudAlert Severity="Severity.Success" Variant="Variant.Outlined">دعوت‌نامه برای @_invitation.Participant.GuestName ثبت شد.</MudAlert>
+                <MudText Typo="Typo.body2">این کد فقط همین یک بار نمایش داده می‌شود. آن را برای مهمان بفرستید یا نگه دارید.</MudText>
+                <MudTextField T="string" Value="_invitation.Token" ReadOnly="true" Label="کد دعوت" Variant="Variant.Outlined" Style="direction: ltr" />
+            }
+        </MudStack>
+    </DialogContent>
+    <DialogActions>
+        @if (_invitation is null)
+        {
+            <MudButton OnClick="Cancel" Disabled="_saving">انصراف</MudButton>
+            <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="SaveAsync" Disabled="_saving">دعوت</MudButton>
+        }
+        else
+        {
+            <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="Done">بستن</MudButton>
+        }
+    </DialogActions>
+</MudDialog>
+
+@code {
+    public const int MaxValidDays = 90;
+
+    private readonly CancellationTokenSource _cts = new();
+    private Dictionary<string, string> _errors = [];
+    private string _name = string.Empty;
+    private string _email = string.Empty;
+    private int _validDays = 7;
+    private string? _serverError;
+    private bool _saving;
+    private GuestInvitationDto? _invitation;
+
+    [CascadingParameter] private IMudDialogInstance Dialog { get; set; } = default!;
+
+    [Parameter, EditorRequired] public Guid MeetingId { get; set; }
+
+    /// <summary>Client-side checks so the person gets a Persian message before any request.</summary>
+    public static Dictionary<string, string> Validate(string name, string email, int validDays)
+    {
+        var errors = new Dictionary<string, string>();
+        if (string.IsNullOrWhiteSpace(name))
+        {
+            errors["name"] = "نام مهمان را وارد کنید.";
+        }
+
+        var trimmed = email.Trim();
+        var at = trimmed.IndexOf('@', StringComparison.Ordinal);
+        if (at < 1 || at == trimmed.Length - 1 || trimmed.Contains(' ', StringComparison.Ordinal))
+        {
+            errors["email"] = "ایمیل معتبر وارد کنید.";
+        }
+
+        if (validDays is < 1 or > MaxValidDays)
+        {
+            errors["days"] = $"اعتبار باید بین ۱ تا {MaxValidDays} روز باشد.";
+        }
+
+        return errors;
+    }
+
+    private async Task SaveAsync()
+    {
+        _serverError = null;
+        _errors = Validate(_name, _email, _validDays);
+        if (_errors.Count > 0)
+        {
+            return;
+        }
+
+        _saving = true;
+        try
+        {
+            var expires = Clock.GetUtcNow().AddDays(_validDays);
+            var result = await Api.InviteGuestAsync(MeetingId, _name.Trim(), _email.Trim(), expires, _cts.Token);
+            if (result.Succeeded && result.Value is { } invitation)
+            {
+                _invitation = invitation;
+                return;
+            }
+
+            _serverError = result.Message ?? ApiResultReader.GenericFailure;
+        }
+        finally
+        {
+            _saving = false;
+        }
+    }
+
+    private void Cancel() => Dialog.Cancel();
+
+    private void Done() => Dialog.Close(DialogResult.Ok(_invitation!.Participant));
+
+    private bool HasError(string key) => _errors.ContainsKey(key);
+
+    private string? ErrorOf(string key) => _errors.GetValueOrDefault(key);
+
+    public void Dispose()
+    {
+        _cts.Cancel();
+        _cts.Dispose();
+    }
+}

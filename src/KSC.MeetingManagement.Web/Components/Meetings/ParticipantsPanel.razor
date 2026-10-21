@@ -1,0 +1,130 @@
+@using KSC.MeetingManagement.Application.Participants
+@using KSC.MeetingManagement.Domain.Meetings
+@using KSC.MeetingManagement.Web.Components.Common
+@using KSC.MeetingManagement.Web.Services
+@inject ParticipantsApiClient Api
+@inject UsersApiClient Users
+@inject IDialogService Dialogs
+@inject ISnackbar Snackbar
+
+<section aria-labelledby="participants-title" class="mt-4">
+    <MudStack Row="true" AlignItems="AlignItems.Center" Class="mb-2">
+        <MudText Typo="Typo.h6" id="participants-title">شرکت‌کنندگان</MudText>
+        <MudSpacer />
+        @if (CanEdit)
+        {
+            <MudButton Variant="Variant.Outlined" Size="Size.Small" OnClick="AddMemberAsync">افزودن عضو</MudButton>
+            <MudButton Variant="Variant.Outlined" Size="Size.Small" OnClick="InviteGuestAsync">دعوت مهمان</MudButton>
+        }
+    </MudStack>
+
+    <StatePanel State="_panel" ErrorText="@_error" OnRetry="LoadAsync" EmptyText="هنوز شرکت‌کننده‌ای اضافه نشده است.">
+        <MudTable Items="_items" Dense="true" Hover="true" Elevation="0">
+            <HeaderContent>
+                <MudTh>نام</MudTh>
+                <MudTh>نوع</MudTh>
+                <MudTh>وضعیت</MudTh>
+                <MudTh><span class="visually-hidden">عملیات</span></MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                <MudTd DataLabel="نام">@NameOf(context)</MudTd>
+                <MudTd DataLabel="نوع">@ParticipantText.Kind(context.Kind)</MudTd>
+                <MudTd DataLabel="وضعیت">@ParticipantText.Status(context.Status)</MudTd>
+                <MudTd>
+                    @if (CanEdit && context.Status != InvitationStatus.Revoked)
+                    {
+                        <MudButton Size="Size.Small" Variant="Variant.Text" Color="Color.Error" OnClick="() => RevokeAsync(context)" aria-label="@("لغو دعوت " + NameOf(context))">لغو دعوت</MudButton>
+                    }
+                </MudTd>
+            </RowTemplate>
+        </MudTable>
+    </StatePanel>
+</section>
+
+@code {
+    private static readonly DialogOptions Options = new() { MaxWidth = MaxWidth.Small, FullWidth = true, CloseOnEscapeKey = true };
+
+    private List<ParticipantDto> _items = [];
+    private Dictionary<Guid, string> _names = [];
+    private PanelState _panel = PanelState.Loading;
+    private string? _error;
+
+    [Parameter, EditorRequired] public Guid MeetingId { get; set; }
+
+    /// <summary>False once the meeting is cancelled or completed.</summary>
+    [Parameter] public bool CanEdit { get; set; }
+
+    protected override Task OnParametersSetAsync() => LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        _panel = PanelState.Loading;
+        var result = await Api.ListAsync(MeetingId, CancellationToken.None);
+        if (!result.Succeeded || result.Value is null)
+        {
+            _error = result.Message ?? ApiResultReader.GenericFailure;
+            _panel = PanelState.Error;
+            return;
+        }
+
+        _items = result.Value;
+
+        // Names of members are only known to people who may manage users; everyone else sees a generic label.
+        if (_items.Any(p => p.UserId is not null) && await Users.ListAsync(CancellationToken.None) is { Succeeded: true, Value: { } members })
+        {
+            _names = members.ToDictionary(m => m.UserId, m => string.IsNullOrWhiteSpace(m.DisplayName) ? m.Email : m.DisplayName);
+        }
+
+        _panel = _items.Count == 0 ? PanelState.Empty : PanelState.Ready;
+    }
+
+    private string NameOf(ParticipantDto p) =>
+        p.Kind == ParticipantKind.Guest
+            ? p.GuestName ?? p.GuestEmail ?? "مهمان"
+            : p.UserId is { } id && _names.TryGetValue(id, out var name) ? name : "عضو سازمان";
+
+    private async Task AddMemberAsync()
+    {
+        var excluded = _items.Where(p => p.Status != InvitationStatus.Revoked && p.UserId is not null).Select(p => p.UserId!.Value).ToList();
+        var parameters = new DialogParameters<AddParticipantDialog> { { d => d.MeetingId, MeetingId }, { d => d.ExcludedUserIds, excluded } };
+        await ShowAsync<AddParticipantDialog>("افزودن عضو", parameters);
+    }
+
+    private Task InviteGuestAsync() =>
+        ShowAsync<InviteGuestDialog>("دعوت مهمان", new DialogParameters<InviteGuestDialog> { { d => d.MeetingId, MeetingId } });
+
+    private async Task ShowAsync<T>(string title, DialogParameters<T> parameters)
+        where T : Microsoft.AspNetCore.Components.IComponent
+    {
+        var dialog = await Dialogs.ShowAsync<T>(title, parameters, Options);
+        var result = await dialog.Result;
+        if (result is { Canceled: false })
+        {
+            await LoadAsync();
+        }
+    }
+
+    private async Task RevokeAsync(ParticipantDto participant)
+    {
+        var confirmed = await Dialogs.ShowMessageBoxAsync(new MessageBoxOptions
+        {
+            Message = $"دعوت «{NameOf(participant)}» لغو شود؟",
+            YesText = "بله",
+            CancelText = "انصراف",
+        });
+        if (confirmed != true)
+        {
+            return;
+        }
+
+        var result = await Api.RevokeAsync(MeetingId, participant.Id, CancellationToken.None);
+        if (result.Succeeded)
+        {
+            await LoadAsync();
+        }
+        else
+        {
+            Snackbar.Add(result.Message ?? ApiResultReader.GenericFailure, Severity.Error);
+        }
+    }
+}
