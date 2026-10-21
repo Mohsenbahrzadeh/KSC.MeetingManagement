@@ -1,6 +1,146 @@
 @page "/meetings"
+@using KSC.MeetingManagement.Application.Meetings
+@using KSC.MeetingManagement.Calendar
+@using KSC.MeetingManagement.Domain.Meetings
+@using KSC.MeetingManagement.Web.Components.Common
+@using KSC.MeetingManagement.Web.Components.Meetings
+@using KSC.MeetingManagement.Web.Services
+@inject MeetingsApiClient Api
+@inject IDialogService Dialogs
 
 <PageTitle>جلسات | مدیریت جلسات</PageTitle>
 
 <MudText Typo="Typo.h4" Class="ksc-page-title" tabindex="-1">جلسات</MudText>
-<MudAlert Severity="Severity.Info" Variant="Variant.Outlined">فهرست و فرم جلسات در گام بعدی (فرم‌ها و Dialogهای عمومی) تکمیل می‌شود. فعلاً جلسات را از «تقویم» ببینید.</MudAlert>
+
+<MudStack Row="true" Spacing="2" AlignItems="AlignItems.Center" Class="mb-3">
+    <MudSelect T="MeetingStatus?" Value="_status" ValueChanged="StatusChangedAsync" Label="وضعیت" Clearable="true" Style="max-width: 220px">
+        @foreach (var s in Statuses)
+        {
+            <MudSelectItem T="MeetingStatus?" Value="@s">@CalendarStatusText.Label((CalendarItemStatus)(int)s)</MudSelectItem>
+        }
+    </MudSelect>
+    <MudSpacer />
+    <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="CreateAsync">جلسهٔ جدید</MudButton>
+</MudStack>
+
+<StatePanel State="_panel" ErrorText="@_error" OnRetry="ReloadAsync" EmptyText="جلسه‌ای پیدا نشد.">
+    <MudTable Items="_items" Dense="true" Hover="true" Elevation="0" Class="ksc-meetings-table">
+        <HeaderContent>
+            <MudTh>شماره</MudTh>
+            <MudTh>عنوان</MudTh>
+            <MudTh>نوع</MudTh>
+            <MudTh>وضعیت</MudTh>
+            <MudTh>زمان</MudTh>
+            <MudTh><span class="visually-hidden">عملیات</span></MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd DataLabel="شماره">@(context.Number is null ? "—" : PersianText.Digits(context.Number))</MudTd>
+            <MudTd DataLabel="عنوان">@context.Title</MudTd>
+            <MudTd DataLabel="نوع">@ModeLabel(context.Mode)</MudTd>
+            <MudTd DataLabel="وضعیت">
+                <MudChip T="string" Size="Size.Small" Class="@CalendarStatusText.CssClass((CalendarItemStatus)(int)context.Status)">@CalendarStatusText.Label((CalendarItemStatus)(int)context.Status)</MudChip>
+            </MudTd>
+            <MudTd DataLabel="زمان">@TimeText(context)</MudTd>
+            <MudTd>
+                <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="() => EditAsync(context.Id)" aria-label="@("ویرایش " + context.Title)">ویرایش</MudButton>
+                @if (HasRoom(context))
+                {
+                    <MudButton Size="Size.Small" Variant="Variant.Text" Href="@($"/meetings/{context.Id}/room")" aria-label="@("ورود به اتاق " + context.Title)">اتاق</MudButton>
+                }
+            </MudTd>
+        </RowTemplate>
+    </MudTable>
+    @if (_hasMore)
+    {
+        <div class="d-flex justify-center mt-3">
+            <MudButton Variant="Variant.Outlined" OnClick="LoadMoreAsync" Disabled="_loadingMore">بیشتر</MudButton>
+        </div>
+    }
+</StatePanel>
+
+@code {
+    private const int PageSize = 50;
+
+    private static readonly MeetingStatus[] Statuses =
+        [MeetingStatus.Draft, MeetingStatus.Scheduled, MeetingStatus.InProgress, MeetingStatus.Completed, MeetingStatus.Postponed, MeetingStatus.Cancelled];
+
+    private static readonly DialogOptions Options = new() { MaxWidth = MaxWidth.Small, FullWidth = true, CloseOnEscapeKey = true };
+
+    private readonly CalendarLayout _layout = new(TehranClock.TimeZone);
+    private readonly List<MeetingDto> _items = [];
+    private PanelState _panel = PanelState.Loading;
+    private string? _error;
+    private MeetingStatus? _status;
+    private bool _hasMore;
+    private bool _loadingMore;
+
+    protected override Task OnInitializedAsync() => ReloadAsync();
+
+    private Task StatusChangedAsync(MeetingStatus? status)
+    {
+        _status = status;
+        return ReloadAsync();
+    }
+
+    private async Task ReloadAsync()
+    {
+        _panel = PanelState.Loading;
+        _items.Clear();
+        _hasMore = false;
+        await LoadPageAsync();
+    }
+
+    private async Task LoadMoreAsync()
+    {
+        _loadingMore = true;
+        await LoadPageAsync();
+        _loadingMore = false;
+    }
+
+    private async Task LoadPageAsync()
+    {
+        var result = await Api.ListAsync(_status, _items.Count, PageSize, CancellationToken.None);
+        if (!result.Succeeded || result.Value is null)
+        {
+            _error = result.Message ?? ApiResultReader.GenericFailure;
+            _panel = PanelState.Error;
+            return;
+        }
+
+        _items.AddRange(result.Value);
+        _hasMore = result.Value.Count == PageSize;
+        _panel = _items.Count == 0 ? PanelState.Empty : PanelState.Ready;
+    }
+
+    private Task CreateAsync() =>
+        ShowAsync("جلسهٔ جدید", new DialogParameters<MeetingFormDialog> { { d => d.Layout, _layout } });
+
+    private Task EditAsync(Guid id) =>
+        ShowAsync("ویرایش جلسه", new DialogParameters<MeetingFormDialog> { { d => d.Layout, _layout }, { d => d.MeetingId, id } });
+
+    private async Task ShowAsync(string title, DialogParameters<MeetingFormDialog> parameters)
+    {
+        var dialog = await Dialogs.ShowAsync<MeetingFormDialog>(title, parameters, Options);
+        var result = await dialog.Result;
+        if (result is { Canceled: false })
+        {
+            await ReloadAsync();
+        }
+    }
+
+    private static string ModeLabel(MeetingMode mode) => mode switch
+    {
+        MeetingMode.InPerson => "حضوری",
+        MeetingMode.Online => "آنلاین",
+        MeetingMode.Hybrid => "ترکیبی",
+        _ => "—",
+    };
+
+    private static bool HasRoom(MeetingDto m) =>
+        m.Mode is MeetingMode.Online or MeetingMode.Hybrid && m.Status is MeetingStatus.Scheduled or MeetingStatus.InProgress;
+
+    private string TimeText(MeetingDto m) =>
+        m.StartUtc is { } start && m.EndUtc is { } end
+            ? $"{PersianText.Format(_layout.DayOf(start))} {PersianText.Time(_layout.TimeOf(start))}–{PersianText.Time(_layout.TimeOf(end))}"
+            : "زمان‌بندی نشده";
+}
