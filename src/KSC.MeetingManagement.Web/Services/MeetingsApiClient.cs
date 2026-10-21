@@ -55,20 +55,31 @@ public sealed class MeetingsApiClient(IHttpClientFactory httpClientFactory)
                 cancellationToken),
             cancellationToken);
 
-    private async Task<ApiResult<MeetingDto>> SendAsync(Func<HttpClient, Task<HttpResponseMessage>> send, CancellationToken cancellationToken)
+    /// <summary>Lists meetings, optionally filtered by status, one page at a time.</summary>
+    public Task<ApiResult<List<MeetingDto>>> ListAsync(MeetingStatus? status, int skip, int take, CancellationToken cancellationToken) =>
+        SendAsync<List<MeetingDto>>(
+            c => c.GetAsync(
+                new Uri($"api/v1/meetings?skip={skip}&take={take}" + (status is { } s ? $"&status={s}" : string.Empty), UriKind.Relative),
+                cancellationToken),
+            cancellationToken);
+
+    private Task<ApiResult<MeetingDto>> SendAsync(Func<HttpClient, Task<HttpResponseMessage>> send, CancellationToken cancellationToken) =>
+        SendAsync<MeetingDto>(send, cancellationToken);
+
+    private async Task<ApiResult<T>> SendAsync<T>(Func<HttpClient, Task<HttpResponseMessage>> send, CancellationToken cancellationToken)
     {
         try
         {
             using var response = await send(Client);
-            return await ApiResultReader.ReadAsync<MeetingDto>(response, Json, cancellationToken);
+            return await ApiResultReader.ReadAsync<T>(response, Json, cancellationToken);
         }
         catch (HttpRequestException)
         {
-            return ApiResult.Fail<MeetingDto>(ApiErrorKind.Failure, ApiResultReader.GenericFailure);
+            return ApiResult.Fail<T>(ApiErrorKind.Failure, ApiResultReader.GenericFailure);
         }
         catch (TaskCanceledException) when (!cancellationToken.IsCancellationRequested)
         {
-            return ApiResult.Fail<MeetingDto>(ApiErrorKind.Failure, ApiResultReader.GenericFailure);
+            return ApiResult.Fail<T>(ApiErrorKind.Failure, ApiResultReader.GenericFailure);
         }
     }
 }
