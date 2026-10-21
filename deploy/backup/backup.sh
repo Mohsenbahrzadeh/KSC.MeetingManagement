@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Backup of the database and attachment files (TASK-070). NOT TESTED against a real PostgreSQL (none was available when written).
+# Backup of the database and attachment files (TASK-070).
 # Usage: backup.sh <backup-dir>
 # Environment: PGHOST PGPORT PGUSER PGDATABASE (password via PGPASSFILE or PGPASSWORD from the secret store),
 #              STORAGE_ROOT (attachments, default /var/lib/ksc/files), BACKUP_RECIPIENT (age recipient; optional but recommended).
@@ -13,7 +13,7 @@ umask 077
 pg_dump --format=custom --no-owner --file="$work/db.dump"
 tar -C "${STORAGE_ROOT:-/var/lib/ksc/files}" -czf "$work/files.tar.gz" .
 # Attachment hashes recorded in the database, used by verify-restore.sh to prove files and records still match.
-psql -At -c 'select "Id", "Sha256", "StorageKey" from meeting_attachments order by "Id"' > "$work/attachments.tsv"
+psql -At -c 'select "Id", "Sha256", "StorageKey" from meeting_attachments order by "Id"' | tr -d '\r' > "$work/attachments.tsv"
 ( cd "$work" && sha256sum db.dump files.tar.gz attachments.tsv > SHA256SUMS )
 
 if [ -n "${BACKUP_RECIPIENT:-}" ]; then
