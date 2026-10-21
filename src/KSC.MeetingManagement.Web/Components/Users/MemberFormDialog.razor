@@ -1,0 +1,161 @@
+@using KSC.MeetingManagement.Calendar
+@using KSC.MeetingManagement.Application.Identity
+@using KSC.MeetingManagement.Domain.Identity
+@using KSC.MeetingManagement.Web.Services
+@implements IDisposable
+@inject UsersApiClient Api
+@inject ISnackbar Snackbar
+
+<MudDialog>
+    <DialogContent>
+        <MudStack Spacing="2">
+            @if (Member is null)
+            {
+                <MudTextField @bind-Value="_email" Label="ایمیل" InputType="InputType.Email" Required="true" Immediate="true" Disabled="_saving"
+                              Error="@HasError("email")" ErrorText="@ErrorOf("email")" />
+                <MudTextField @bind-Value="_displayName" Label="نام نمایشی" MaxLength="200" Disabled="_saving" />
+                <MudTextField @bind-Value="_password" Label="رمز عبور" InputType="InputType.Password" Immediate="true" Disabled="_saving"
+                              HelperText="@($"حداقل {PersianText.Digits(PasswordPolicy.MinLength)} نویسه")" Error="@HasError("password")" ErrorText="@ErrorOf("password")" />
+            }
+            else
+            {
+                <MudText Typo="Typo.subtitle1">@Member.DisplayName (@Member.Email)</MudText>
+            }
+
+            <MudText Typo="Typo.subtitle2" id="roles-label">نقش‌ها</MudText>
+            <div role="group" aria-labelledby="roles-label">
+                @foreach (var role in Roles.All)
+                {
+                    <MudCheckBox T="bool" Value="@_roles.Contains(role)" ValueChanged="@(v => Toggle(role, v))" Label="@RoleText.Label(role)" Disabled="_saving" />
+                }
+            </div>
+            @if (HasError("roles"))
+            {
+                <MudText Color="Color.Error" Typo="Typo.caption" role="alert">@ErrorOf("roles")</MudText>
+            }
+            @if (_serverError is not null)
+            {
+                <MudAlert Severity="Severity.Error" Variant="Variant.Outlined" role="alert">@_serverError</MudAlert>
+            }
+        </MudStack>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel" Disabled="_saving">انصراف</MudButton>
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="SaveAsync" Disabled="_saving">ذخیره</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    private readonly CancellationTokenSource _cts = new();
+    private readonly HashSet<string> _roles = new(StringComparer.Ordinal);
+    private Dictionary<string, string> _errors = [];
+    private string _email = string.Empty;
+    private string _displayName = string.Empty;
+    private string _password = string.Empty;
+    private string? _serverError;
+    private bool _saving;
+
+    [CascadingParameter] private IMudDialogInstance Dialog { get; set; } = default!;
+
+    /// <summary>When set, the dialog changes the roles of this member; otherwise it adds a new one.</summary>
+    [Parameter] public MemberDto? Member { get; set; }
+
+    protected override void OnInitialized()
+    {
+        if (Member is { } m)
+        {
+            _roles.UnionWith(m.Roles);
+        }
+        else
+        {
+            _roles.Add(Roles.Participant);
+        }
+    }
+
+    /// <summary>Client-side checks that mirror the server rules so the person gets a Persian message before any request.</summary>
+    public static Dictionary<string, string> Validate(string email, string password, IReadOnlyCollection<string> roles, bool isNew)
+    {
+        var errors = new Dictionary<string, string>();
+        if (isNew)
+        {
+            var trimmed = email.Trim();
+            var at = trimmed.IndexOf('@', StringComparison.Ordinal);
+            if (at < 1 || at == trimmed.Length - 1 || trimmed.Contains(' ', StringComparison.Ordinal))
+            {
+                errors["email"] = "ایمیل معتبر وارد کنید.";
+            }
+
+            if (password.Length < PasswordPolicy.MinLength)
+            {
+                errors["password"] = $"رمز عبور باید حداقل {PersianText.Digits(PasswordPolicy.MinLength)} نویسه باشد.";
+            }
+            else if (string.Equals(password, trimmed, StringComparison.OrdinalIgnoreCase))
+            {
+                errors["password"] = "رمز عبور باید با ایمیل متفاوت باشد.";
+            }
+        }
+
+        if (roles.Count == 0)
+        {
+            errors["roles"] = "حداقل یک نقش انتخاب کنید.";
+        }
+
+        return errors;
+    }
+
+    private void Toggle(string role, bool on)
+    {
+        if (on)
+        {
+            _roles.Add(role);
+        }
+        else
+        {
+            _roles.Remove(role);
+        }
+    }
+
+    private async Task SaveAsync()
+    {
+        _serverError = null;
+        _errors = Validate(_email, _password, _roles, Member is null);
+        if (_errors.Count > 0)
+        {
+            return;
+        }
+
+        _saving = true;
+        try
+        {
+            var roles = Roles.All.Where(_roles.Contains).ToList();
+            var result = Member is { } m
+                ? await Api.SetRolesAsync(m.UserId, roles, _cts.Token)
+                : await Api.AddAsync(_email.Trim(), _displayName.Trim(), _password, roles, _cts.Token);
+
+            if (result.Succeeded && result.Value is { } saved)
+            {
+                Snackbar.Add(Member is null ? "کاربر اضافه شد." : "نقش‌ها ذخیره شد.", Severity.Success);
+                Dialog.Close(DialogResult.Ok(saved));
+                return;
+            }
+
+            _serverError = result.Message ?? ApiResultReader.GenericFailure;
+        }
+        finally
+        {
+            _saving = false;
+        }
+    }
+
+    private void Cancel() => Dialog.Cancel();
+
+    private bool HasError(string key) => _errors.ContainsKey(key);
+
+    private string? ErrorOf(string key) => _errors.GetValueOrDefault(key);
+
+    public void Dispose()
+    {
+        _cts.Cancel();
+        _cts.Dispose();
+    }
+}

@@ -27,6 +27,7 @@ builder.Services.AddScoped<RoomApiClient>();
 builder.Services.AddScoped<IMeetingCalendarDataProvider, ApiMeetingCalendarDataProvider>();
 builder.Services.AddScoped<MeetingsApiClient>();
 builder.Services.AddScoped<CommitteesApiClient>();
+builder.Services.AddScoped<UsersApiClient>();
 
 var app = builder.Build();
 
