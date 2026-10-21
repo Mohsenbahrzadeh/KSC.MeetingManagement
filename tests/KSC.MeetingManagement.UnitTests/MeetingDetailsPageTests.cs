@@ -24,6 +24,9 @@ public sealed class MeetingDetailsPageTests : BunitContext, IAsyncLifetime
         Services.AddMudServices();
         Services.AddSingleton<IHttpClientFactory>(new Factory(this));
         Services.AddScoped<MeetingsApiClient>();
+        Services.AddScoped<ParticipantsApiClient>();
+        Services.AddScoped<UsersApiClient>();
+        Services.AddSingleton(TimeProvider.System);
     }
 
     public Task InitializeAsync() => Task.CompletedTask;
@@ -40,7 +43,14 @@ public sealed class MeetingDetailsPageTests : BunitContext, IAsyncLifetime
         protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
         {
             var body = request.Content is null ? string.Empty : await request.Content.ReadAsStringAsync(cancellationToken);
-            owner._requests.Add((request.Method, request.RequestUri!.AbsolutePath, body));
+            var path = request.RequestUri!.AbsolutePath;
+            if (path.Contains("/participants", StringComparison.Ordinal) || path.EndsWith("/users", StringComparison.Ordinal))
+            {
+                // The participants panel is covered by ParticipantsPanelTests; here it only has to stay quiet.
+                return path.EndsWith("/users", StringComparison.Ordinal) ? new HttpResponseMessage(HttpStatusCode.Forbidden) : Json("[]");
+            }
+
+            owner._requests.Add((request.Method, path, body));
             return owner._respond(request);
         }
     }

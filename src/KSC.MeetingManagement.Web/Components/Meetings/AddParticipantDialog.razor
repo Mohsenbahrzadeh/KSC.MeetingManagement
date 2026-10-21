@@ -1,0 +1,115 @@
+@using KSC.MeetingManagement.Application.Identity
+@using KSC.MeetingManagement.Web.Components.Common
+@using KSC.MeetingManagement.Web.Services
+@implements IDisposable
+@inject ParticipantsApiClient Api
+@inject UsersApiClient Users
+@inject ISnackbar Snackbar
+
+<MudDialog>
+    <DialogContent>
+        <StatePanel State="_panel" ErrorText="@_loadError" OnRetry="LoadAsync" EmptyText="عضو دیگری برای افزودن نیست.">
+            <MudStack Spacing="2">
+                <MudSelect T="Guid?" @bind-Value="_userId" Label="عضو سازمان" Required="true" Disabled="_saving"
+                           Error="@(_selectError is not null)" ErrorText="@_selectError">
+                    @foreach (var m in _candidates)
+                    {
+                        <MudSelectItem T="Guid?" Value="@((Guid?)m.UserId)">@(string.IsNullOrWhiteSpace(m.DisplayName) ? m.Email : $"{m.DisplayName} ({m.Email})")</MudSelectItem>
+                    }
+                </MudSelect>
+                @if (_serverError is not null)
+                {
+                    <MudAlert Severity="Severity.Error" Variant="Variant.Outlined" role="alert">
+                        @_serverError
+                        @if (_canForce)
+                        {
+                            <MudButton Class="ms-2" Size="Size.Small" Variant="Variant.Text" Disabled="_saving" OnClick="() => SaveAsync(true)">افزودن با وجود تداخل</MudButton>
+                        }
+                    </MudAlert>
+                }
+            </MudStack>
+        </StatePanel>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel" Disabled="_saving">انصراف</MudButton>
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="() => SaveAsync(false)" Disabled="@(_saving || _panel != PanelState.Ready)">افزودن</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    private readonly CancellationTokenSource _cts = new();
+    private List<MemberDto> _candidates = [];
+    private PanelState _panel = PanelState.Loading;
+    private string _loadError = ApiResultReader.GenericFailure;
+    private string? _selectError;
+    private string? _serverError;
+    private bool _canForce;
+    private bool _saving;
+    private Guid? _userId;
+
+    [CascadingParameter] private IMudDialogInstance Dialog { get; set; } = default!;
+
+    [Parameter, EditorRequired] public Guid MeetingId { get; set; }
+
+    /// <summary>Users who already take part (and are not revoked) are not offered again.</summary>
+    [Parameter] public IReadOnlyCollection<Guid> ExcludedUserIds { get; set; } = [];
+
+    protected override Task OnInitializedAsync() => LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        _panel = PanelState.Loading;
+        var result = await Users.ListAsync(_cts.Token);
+        if (!result.Succeeded || result.Value is null)
+        {
+            _loadError = result.Error == ApiErrorKind.Forbidden ? "فهرست اعضا فقط برای مدیر کاربران در دسترس است." : result.Message ?? _loadError;
+            _panel = PanelState.Error;
+            return;
+        }
+
+        _candidates = Candidates(result.Value, ExcludedUserIds);
+        _panel = _candidates.Count == 0 ? PanelState.Empty : PanelState.Ready;
+    }
+
+    /// <summary>Active members who do not already take part in the meeting.</summary>
+    public static List<MemberDto> Candidates(IEnumerable<MemberDto> members, IReadOnlyCollection<Guid> excluded) =>
+        members.Where(m => m.MembershipActive && m.UserActive && !excluded.Contains(m.UserId)).ToList();
+
+    private async Task SaveAsync(bool allowConflicts)
+    {
+        _serverError = null;
+        _canForce = false;
+        _selectError = _userId is null ? "یک عضو را انتخاب کنید." : null;
+        if (_selectError is not null)
+        {
+            return;
+        }
+
+        _saving = true;
+        try
+        {
+            var result = await Api.AddInternalAsync(MeetingId, _userId!.Value, allowConflicts, _cts.Token);
+            if (result.Succeeded && result.Value is { } saved)
+            {
+                Snackbar.Add("شرکت‌کننده اضافه شد.", Severity.Success);
+                Dialog.Close(DialogResult.Ok(saved));
+                return;
+            }
+
+            _serverError = result.Message ?? ApiResultReader.GenericFailure;
+            _canForce = result.Error == ApiErrorKind.TimeConflict;
+        }
+        finally
+        {
+            _saving = false;
+        }
+    }
+
+    private void Cancel() => Dialog.Cancel();
+
+    public void Dispose()
+    {
+        _cts.Cancel();
+        _cts.Dispose();
+    }
+}

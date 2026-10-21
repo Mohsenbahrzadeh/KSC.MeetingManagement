@@ -74,6 +74,8 @@
                 <MudButton Variant="Variant.Text" Color="Color.Error" OnClick="CancelMeetingAsync" Disabled="_busy">لغو جلسه</MudButton>
             }
         </MudStack>
+
+        <ParticipantsPanel MeetingId="m.Id" CanEdit="@(m.Status is not (MeetingStatus.Cancelled or MeetingStatus.Completed))" />
     }
 </StatePanel>
 
