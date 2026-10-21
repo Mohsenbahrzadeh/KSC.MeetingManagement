@@ -33,7 +33,7 @@ Five wrong passwords lock the account for 15 minutes. Send `Authorization: Beare
 
 Checked by hand on PostgreSQL 17.6 (2026-10-21): all migrations including `AddIdentity` apply; setup, login, meeting create (idempotent repeat, conflict 409, validation 422, tenant 403), reschedule and optimistic-concurrency (two parallel postpones: one 200, one 409) behave as expected.
 Also checked: refresh-token rotation (reusing an old token returns 401 and revokes the newer one), member creation (201) and account lockout (429 after repeated wrong passwords, even with the correct password while locked).
-Not yet checked on a real PostgreSQL: role changes/deactivation, and the other modules (agenda, minutes, audit, reports). The API does not apply migrations itself; run `dotnet ef database update`.
+The whole integration suite (253 tests) also passed against PostgreSQL 17.6 (2026-10-21) with a fresh, fully migrated database per test: `KSC_TEST_POSTGRES="Host=localhost;Database=postgres;Username=postgres;Password=...;Pooling=false" dotnet test tests/KSC.MeetingManagement.IntegrationTests` (run in chunks of about 60 tests; a single run of all of them timed out on connections). This covers role changes, deactivation, agenda, minutes, audit and reports functionally; concurrent-load behaviour of transactions and unique indexes is still unchecked.
 
 ## Web application
 
