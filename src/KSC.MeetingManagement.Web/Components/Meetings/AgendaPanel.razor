@@ -1,0 +1,157 @@
+@using KSC.MeetingManagement.Application.Agenda
+@using KSC.MeetingManagement.Calendar
+@using KSC.MeetingManagement.Web.Components.Common
+@using KSC.MeetingManagement.Web.Services
+@inject AgendaApiClient Api
+@inject IDialogService Dialogs
+@inject ISnackbar Snackbar
+
+<section aria-labelledby="agenda-title" class="mt-4">
+    <MudStack Row="true" AlignItems="AlignItems.Center" Class="mb-2">
+        <MudText Typo="Typo.h6" id="agenda-title">دستور جلسه</MudText>
+        <MudSpacer />
+        @if (CanEdit && _panel is PanelState.Ready or PanelState.Empty)
+        {
+            <MudButton Variant="Variant.Outlined" Size="Size.Small" Disabled="@(_busy || _agenda?.Items.Count >= AgendaService.MaxItems)" OnClick="() => EditAsync(null)">افزودن موضوع</MudButton>
+        }
+    </MudStack>
+
+    @if (_actionError is not null)
+    {
+        <MudAlert Severity="Severity.Error" Variant="Variant.Outlined" role="alert" Class="mb-2">@_actionError</MudAlert>
+    }
+    <StatePanel State="_panel" ErrorText="@_error" OnRetry="LoadAsync" EmptyText="هنوز موضوعی برای این جلسه ثبت نشده است.">
+        <MudTable Items="_agenda?.Items" Dense="true" Hover="true" Elevation="0">
+            <HeaderContent>
+                <MudTh>ترتیب</MudTh>
+                <MudTh>موضوع</MudTh>
+                <MudTh>مدت</MudTh>
+                <MudTh><span class="visually-hidden">عملیات</span></MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                <MudTd DataLabel="ترتیب">@PersianText.Digits(context.Order)</MudTd>
+                <MudTd DataLabel="موضوع">
+                    <strong>@context.Title</strong>
+                    @if (!string.IsNullOrWhiteSpace(context.Description))
+                    {
+                        <div>@context.Description</div>
+                    }
+                    @if (context.PresenterUserId is { } presenter)
+                    {
+                        <div>ارائه‌دهنده: @PresenterName(presenter)</div>
+                    }
+                </MudTd>
+                <MudTd DataLabel="مدت">@(context.DurationMinutes is { } minutes ? $"{PersianText.Digits(minutes)} دقیقه" : "—")</MudTd>
+                <MudTd>
+                    @if (CanEdit)
+                    {
+                        <MudButton Size="Size.Small" Variant="Variant.Text" Disabled="_busy || context.Order == 1" OnClick="() => MoveAsync(context, -1)" aria-label="@($"انتقال {context.Title} به بالا")">بالا</MudButton>
+                        <MudButton Size="Size.Small" Variant="Variant.Text" Disabled="_busy || context.Order == _agenda!.Items.Count" OnClick="() => MoveAsync(context, 1)" aria-label="@($"انتقال {context.Title} به پایین")">پایین</MudButton>
+                        <MudButton Size="Size.Small" Variant="Variant.Text" Disabled="_busy" OnClick="() => EditAsync(context)" aria-label="@($"ویرایش {context.Title}")">ویرایش</MudButton>
+                        <MudButton Size="Size.Small" Variant="Variant.Text" Color="Color.Error" Disabled="_busy" OnClick="() => RemoveAsync(context)" aria-label="@($"حذف {context.Title}")">حذف</MudButton>
+                    }
+                </MudTd>
+            </RowTemplate>
+        </MudTable>
+    </StatePanel>
+</section>
+
+@code {
+    private static readonly DialogOptions Options = new() { MaxWidth = MaxWidth.Small, FullWidth = true, CloseOnEscapeKey = true };
+    private AgendaDto? _agenda;
+    private PanelState _panel = PanelState.Loading;
+    private string? _error;
+    private string? _actionError;
+    private bool _busy;
+    private Dictionary<Guid, string> _names = [];
+
+    [Parameter, EditorRequired] public Guid MeetingId { get; set; }
+    [Parameter] public bool CanEdit { get; set; }
+
+    [Inject] private UsersApiClient Users { get; set; } = default!;
+
+    protected override Task OnParametersSetAsync() => LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        _panel = PanelState.Loading;
+        _agenda = null;
+        _names = [];
+        var result = await Api.GetAsync(MeetingId, CancellationToken.None);
+        if (!result.Succeeded || result.Value is null)
+        {
+            _error = result.Message ?? ApiResultReader.GenericFailure;
+            _panel = PanelState.Error;
+            return;
+        }
+
+        _agenda = result.Value;
+        if (_agenda.Items.Any(i => i.PresenterUserId is not null) && await Users.ListAsync(CancellationToken.None) is { Succeeded: true, Value: { } members })
+        {
+            _names = members.ToDictionary(m => m.UserId, m => string.IsNullOrWhiteSpace(m.DisplayName) ? m.Email : m.DisplayName);
+        }
+        _panel = _agenda.Items.Count == 0 ? PanelState.Empty : PanelState.Ready;
+    }
+
+    private string PresenterName(Guid id) => _names.TryGetValue(id, out var name) ? name : "عضو سازمان";
+
+    private async Task EditAsync(AgendaItemDto? item)
+    {
+        if (_busy || _agenda is null) return;
+        var parameters = new DialogParameters<AgendaItemDialog>
+        {
+            { d => d.MeetingId, MeetingId }, { d => d.Revision, _agenda.Revision }, { d => d.Item, item },
+        };
+        var dialog = await Dialogs.ShowAsync<AgendaItemDialog>(item is null ? "موضوع جدید" : "ویرایش موضوع", parameters, Options);
+        if (await dialog.Result is { Canceled: false, Data: AgendaDto updated })
+        {
+            SetAgenda(updated);
+            await LoadAsync();
+        }
+    }
+
+    private async Task RemoveAsync(AgendaItemDto item)
+    {
+        if (_busy || _agenda is null || await Dialogs.ShowMessageBoxAsync(new MessageBoxOptions
+            { Message = $"موضوع «{item.Title}» حذف شود؟", YesText = "بله", CancelText = "انصراف" }) != true) return;
+        await MutateAsync(() => Api.RemoveAsync(MeetingId, item.Id, _agenda.Revision, CancellationToken.None));
+    }
+
+    private Task MoveAsync(AgendaItemDto item, int offset)
+    {
+        if (_busy || _agenda is null) return Task.CompletedTask;
+        var ids = _agenda.Items.Select(i => i.Id).ToList();
+        var index = ids.IndexOf(item.Id);
+        if (index < 0 || index + offset < 0 || index + offset >= ids.Count) return Task.CompletedTask;
+        (ids[index], ids[index + offset]) = (ids[index + offset], ids[index]);
+        return MutateAsync(() => Api.ReorderAsync(MeetingId, _agenda.Revision, ids, CancellationToken.None));
+    }
+
+    private async Task MutateAsync(Func<Task<ApiResult<AgendaDto>>> action)
+    {
+        _busy = true;
+        _actionError = null;
+        try
+        {
+            var result = await action();
+            if (result.Succeeded && result.Value is { } updated)
+            {
+                SetAgenda(updated);
+                Snackbar.Add("دستور جلسه به‌روزرسانی شد.", Severity.Success);
+            }
+            else
+            {
+                _actionError = result.Message ?? ApiResultReader.GenericFailure;
+                if (result.Error == ApiErrorKind.VersionConflict) await LoadAsync();
+            }
+        }
+        finally { _busy = false; }
+    }
+
+    private void SetAgenda(AgendaDto agenda)
+    {
+        _agenda = agenda;
+        _actionError = null;
+        _panel = agenda.Items.Count == 0 ? PanelState.Empty : PanelState.Ready;
+    }
+}

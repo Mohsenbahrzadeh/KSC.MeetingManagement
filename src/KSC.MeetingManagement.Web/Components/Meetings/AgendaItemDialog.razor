@@ -1,0 +1,158 @@
+@using KSC.MeetingManagement.Application.Agenda
+@using KSC.MeetingManagement.Application.Identity
+@using KSC.MeetingManagement.Domain.Meetings
+@using KSC.MeetingManagement.Web.Components.Common
+@using KSC.MeetingManagement.Web.Services
+@implements IDisposable
+@inject AgendaApiClient Api
+@inject UsersApiClient Users
+@inject ISnackbar Snackbar
+
+<MudDialog>
+    <DialogContent>
+        <MudStack Spacing="2">
+            <MudTextField @bind-Value="_title" Label="موضوع" Required="true" MaxLength="AgendaItem.MaxTitleLength" Disabled="_saving"
+                          Error="@(_titleError is not null)" ErrorText="@_titleError" />
+            <MudTextField @bind-Value="_description" Label="توضیحات" Lines="3" MaxLength="AgendaItem.MaxDescriptionLength" Disabled="_saving" />
+            <MudNumericField T="int?" @bind-Value="_duration" Label="مدت (دقیقه)" Min="1" Max="AgendaItem.MaxDurationMinutes" Disabled="_saving"
+                             Error="@(_durationError is not null)" ErrorText="@_durationError" />
+            <StatePanel State="_membersPanel" ErrorText="@_membersError" OnRetry="LoadMembersAsync" EmptyText="عضو فعالی برای انتخاب ارائه‌دهنده وجود ندارد.">
+                <MudSelect T="Guid?" @bind-Value="_presenter" Label="ارائه‌دهنده" Clearable="true" Disabled="_saving">
+                    @foreach (var member in _members)
+                    {
+                        <MudSelectItem T="Guid?" Value="@((Guid?)member.UserId)">@(string.IsNullOrWhiteSpace(member.DisplayName) ? member.Email : member.DisplayName)</MudSelectItem>
+                    }
+                </MudSelect>
+            </StatePanel>
+            @if (_serverError is not null)
+            {
+                <MudAlert Severity="Severity.Error" Variant="Variant.Outlined" role="alert">
+                    @_serverError
+                    @if (_conflict)
+                    {
+                        <MudButton Size="Size.Small" Variant="Variant.Text" Disabled="_saving" OnClick="ReloadRevisionAsync">دریافت آخرین نسخه</MudButton>
+                    }
+                </MudAlert>
+            }
+        </MudStack>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel" Disabled="_saving">انصراف</MudButton>
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="SaveAsync" Disabled="_saving">ذخیره</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    private readonly CancellationTokenSource _cts = new();
+    private string _title = string.Empty;
+    private string? _description;
+    private int? _duration;
+    private Guid? _presenter;
+    private string? _titleError;
+    private string? _durationError;
+    private string? _serverError;
+    private string? _membersError;
+    private bool _conflict;
+    private bool _saving;
+    private long _revision;
+    private List<MemberDto> _members = [];
+    private PanelState _membersPanel = PanelState.Loading;
+
+    [CascadingParameter] private IMudDialogInstance Dialog { get; set; } = default!;
+    [Parameter, EditorRequired] public Guid MeetingId { get; set; }
+    [Parameter, EditorRequired] public long Revision { get; set; }
+    [Parameter] public AgendaItemDto? Item { get; set; }
+
+    protected override Task OnInitializedAsync()
+    {
+        _revision = Revision;
+        if (Item is { } item)
+        {
+            _title = item.Title;
+            _description = item.Description;
+            _duration = item.DurationMinutes;
+            _presenter = item.PresenterUserId;
+        }
+        return LoadMembersAsync();
+    }
+
+    private async Task LoadMembersAsync()
+    {
+        _membersPanel = PanelState.Loading;
+        var result = await Users.ListAsync(_cts.Token);
+        if (!result.Succeeded || result.Value is null)
+        {
+            // Viewing/editing the agenda does not require permission to enumerate all users.
+            _membersError = result.Error == ApiErrorKind.Forbidden ? "فهرست اعضا برای شما در دسترس نیست؛ ارائه‌دهندهٔ فعلی حفظ می‌شود." : result.Message ?? ApiResultReader.GenericFailure;
+            _membersPanel = PanelState.Error;
+            return;
+        }
+        _members = result.Value.Where(m => m.MembershipActive && m.UserActive).ToList();
+        _membersPanel = _members.Count == 0 ? PanelState.Empty : PanelState.Ready;
+    }
+
+    private async Task ReloadRevisionAsync()
+    {
+        var result = await Api.GetAsync(MeetingId, _cts.Token);
+        if (result.Succeeded && result.Value is { } agenda)
+        {
+            _revision = agenda.Revision;
+            if (Item is { } item)
+            {
+                var current = agenda.Items.FirstOrDefault(i => i.Id == item.Id);
+                if (current is null)
+                {
+                    _serverError = "این موضوع حذف شده است. پنجره را ببندید و فهرست را تازه کنید.";
+                    _conflict = false;
+                    return;
+                }
+                _title = current.Title;
+                _description = current.Description;
+                _presenter = current.PresenterUserId;
+                _duration = current.DurationMinutes;
+            }
+            _serverError = null;
+            _conflict = false;
+        }
+        else _serverError = result.Message ?? ApiResultReader.GenericFailure;
+    }
+
+    private async Task SaveAsync()
+    {
+        _titleError = string.IsNullOrWhiteSpace(_title) ? "موضوع را وارد کنید." : _title.Trim().Length > AgendaItem.MaxTitleLength ? "موضوع بیش از حد طولانی است." : null;
+        _durationError = _duration is < 1 or > AgendaItem.MaxDurationMinutes ? "مدت باید بین ۱ تا ۶۰۰ دقیقه باشد." : null;
+        if (_titleError is not null || _durationError is not null) return;
+        if (_description?.Length > AgendaItem.MaxDescriptionLength)
+        {
+            _serverError = "توضیحات بیش از حد طولانی است.";
+            return;
+        }
+
+        _saving = true;
+        _serverError = null;
+        try
+        {
+            var input = new AgendaItemInput(_title.Trim(), _description, _presenter, _duration);
+            var result = Item is { } item
+                ? await Api.UpdateAsync(MeetingId, item.Id, _revision, input, _cts.Token)
+                : await Api.AddAsync(MeetingId, _revision, input, _cts.Token);
+            if (result.Succeeded && result.Value is { } agenda)
+            {
+                Snackbar.Add("موضوع ذخیره شد.", Severity.Success);
+                Dialog.Close(DialogResult.Ok(agenda));
+                return;
+            }
+            _serverError = result.Message ?? ApiResultReader.GenericFailure;
+            _conflict = result.Error == ApiErrorKind.VersionConflict;
+        }
+        finally { _saving = false; }
+    }
+
+    private void Cancel() => Dialog.Cancel();
+
+    public void Dispose()
+    {
+        _cts.Cancel();
+        _cts.Dispose();
+    }
+}
