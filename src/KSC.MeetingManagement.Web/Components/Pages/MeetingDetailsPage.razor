@@ -76,6 +76,7 @@
         </MudStack>
         <AgendaPanel MeetingId="m.Id" CanEdit="@(m.Status is not (MeetingStatus.Cancelled or MeetingStatus.Completed))" />
         <MudButton Variant="Variant.Outlined" Href="@($"/meetings/{m.Id}/minutes")" Class="mt-3">صورت‌جلسه</MudButton>
+        <MudButton Variant="Variant.Outlined" Href="@($"/meetings/{m.Id}/resolutions")" Class="mt-3 ms-2">مصوبات</MudButton>
     }
 </StatePanel>
 
