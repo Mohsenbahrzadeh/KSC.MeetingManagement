@@ -24,6 +24,8 @@ public sealed class MeetingDetailsPageTests : BunitContext, IAsyncLifetime
         Services.AddMudServices();
         Services.AddSingleton<IHttpClientFactory>(new Factory(this));
         Services.AddScoped<MeetingsApiClient>();
+        Services.AddScoped<AgendaApiClient>();
+        Services.AddScoped<UsersApiClient>();
     }
 
     public Task InitializeAsync() => Task.CompletedTask;
@@ -41,7 +43,9 @@ public sealed class MeetingDetailsPageTests : BunitContext, IAsyncLifetime
         {
             var body = request.Content is null ? string.Empty : await request.Content.ReadAsStringAsync(cancellationToken);
             owner._requests.Add((request.Method, request.RequestUri!.AbsolutePath, body));
-            return owner._respond(request);
+            return request.RequestUri.AbsolutePath.EndsWith("/agenda", StringComparison.Ordinal) && request.Method == HttpMethod.Get
+                ? Json("""{"revision":0,"items":[]}""")
+                : owner._respond(request);
         }
     }
 
