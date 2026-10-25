@@ -31,6 +31,7 @@ builder.Services.AddScoped<UsersApiClient>();
 builder.Services.AddScoped<AgendaApiClient>();
 builder.Services.AddScoped<MinutesApiClient>();
 builder.Services.AddScoped<ResolutionsApiClient>();
+builder.Services.AddScoped<ActionsApiClient>();
 
 var app = builder.Build();
 
