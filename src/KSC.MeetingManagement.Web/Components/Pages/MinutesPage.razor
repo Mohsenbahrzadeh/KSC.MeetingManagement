@@ -1,0 +1,288 @@
+@page "/meetings/{MeetingId:guid}/minutes"
+@using KSC.MeetingManagement.Application.Minutes
+@using KSC.MeetingManagement.Calendar
+@using KSC.MeetingManagement.Domain.Identity
+@using KSC.MeetingManagement.Domain.Meetings
+@using KSC.MeetingManagement.Web.Components.Common
+@using KSC.MeetingManagement.Web.Services
+@inject MinutesApiClient Api
+@inject SessionState Session
+@inject IDialogService Dialogs
+@inject ISnackbar Snackbar
+
+<PageTitle>صورت‌جلسه | مدیریت جلسات</PageTitle>
+<MudButton Href="@($"/meetings/{MeetingId}")" Variant="Variant.Text" Size="Size.Small">« بازگشت به جلسه</MudButton>
+<MudText Typo="Typo.h4" Class="ksc-page-title" tabindex="-1">صورت‌جلسه</MudText>
+
+@if (_actionError is not null)
+{
+    <MudAlert Severity="Severity.Error" Variant="Variant.Outlined" role="alert" Class="mb-3">@_actionError</MudAlert>
+}
+<StatePanel State="_panel" ErrorText="@_error" OnRetry="LoadAsync" EmptyText="صورت‌جلسه‌ای برای نمایش وجود ندارد.">
+    @if (_minutes is { } minutes)
+    {
+        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2" Class="mb-3">
+            <MudChip T="string" Size="Size.Small">@StatusText(minutes.Status)</MudChip>
+            <MudText Typo="Typo.body2">نسخهٔ @PersianText.Digits(minutes.CurrentVersionNumber)</MudText>
+        </MudStack>
+        @if (_editing)
+        {
+            <MudTextField @bind-Value="_content" Label="متن صورت‌جلسه" Lines="12" MaxLength="Minutes.MaxContentLength" Disabled="_busy" />
+            @if (_contentError is not null)
+            {
+                <MudText Color="Color.Error" role="alert">@_contentError</MudText>
+            }
+            <MudStack Row="true" Spacing="2" Class="my-2">
+                <MudButton Variant="Variant.Filled" Color="Color.Primary" Disabled="_busy" OnClick="SaveAsync">ذخیرهٔ نسخه</MudButton>
+                <MudButton Variant="Variant.Text" Disabled="_busy" OnClick="() => _editing = false">انصراف</MudButton>
+            </MudStack>
+        }
+        else
+        {
+            <MudPaper Outlined="true" Elevation="0" Class="pa-4 mb-3" Style="white-space: pre-wrap; overflow-wrap: anywhere">@minutes.Content</MudPaper>
+            <MudStack Row="true" Wrap="Wrap.Wrap" Spacing="2" Class="mb-3">
+                @if (CanWrite && minutes.Status is MinutesStatus.Draft or MinutesStatus.Rejected)
+                {
+                    <MudButton Variant="Variant.Outlined" Disabled="_busy" OnClick="BeginEdit">ویرایش متن</MudButton>
+                }
+                @if (CanWrite && minutes.Status == MinutesStatus.Draft)
+                {
+                    <MudButton Variant="Variant.Filled" Color="Color.Primary" Disabled="_busy" OnClick="SubmitAsync">ارسال برای تأیید</MudButton>
+                }
+                @if (CanApprove && minutes.Status == MinutesStatus.InReview)
+                {
+                    <MudButton Variant="Variant.Filled" Color="Color.Primary" Disabled="_busy" OnClick="ApproveAsync">تأیید</MudButton>
+                    <MudButton Variant="Variant.Outlined" Color="Color.Error" Disabled="_busy" OnClick="() => BeginComment(CommentAction.Reject)">رد</MudButton>
+                }
+                @if (CanApprove && minutes.Status == MinutesStatus.Approved)
+                {
+                    <MudButton Variant="Variant.Outlined" Disabled="_busy" OnClick="() => BeginComment(CommentAction.Reopen)">بازگشایی</MudButton>
+                }
+            </MudStack>
+            @if (_commentAction != CommentAction.None)
+            {
+                <MudTextField @bind-Value="_comment" Label="@(_commentAction == CommentAction.Reject ? "دلیل رد" : "دلیل بازگشایی")" Lines="2" MaxLength="Minutes.MaxCommentLength" Disabled="_busy" />
+                @if (_commentError is not null)
+                {
+                    <MudText Color="Color.Error" role="alert">@_commentError</MudText>
+                }
+                <MudStack Row="true" Spacing="2" Class="my-2">
+                    <MudButton Variant="Variant.Filled" Color="Color.Primary" Disabled="_busy" OnClick="SendCommentAsync">ثبت</MudButton>
+                    <MudButton Variant="Variant.Text" Disabled="_busy" OnClick="() => _commentAction = CommentAction.None">انصراف</MudButton>
+                </MudStack>
+            }
+        }
+        @if (minutes.Transitions.Count > 0)
+        {
+            <MudText Typo="Typo.h6">تاریخچهٔ تأیید</MudText>
+            <ul>
+                @foreach (var transition in minutes.Transitions)
+                {
+                    <li>@StatusText(transition.From) ← @StatusText(transition.To) — نسخهٔ @PersianText.Digits(transition.VersionNumber) — @transition.AtUtc.ToLocalTime().ToString("yyyy/MM/dd HH:mm") @transition.Comment</li>
+                }
+            </ul>
+        }
+        <MudText Typo="Typo.h6">نسخه‌ها</MudText>
+        <StatePanel State="_versionsPanel" ErrorText="@_versionsError" OnRetry="LoadVersionsAsync" EmptyText="نسخه‌ای موجود نیست.">
+            <MudStack Row="true" Wrap="Wrap.Wrap" Spacing="2">
+                @foreach (var version in _versions)
+                {
+                    <MudButton Variant="Variant.Text" Disabled="_busy" OnClick="() => ShowVersionAsync(version.Number)">نسخهٔ @PersianText.Digits(version.Number)</MudButton>
+                }
+            </MudStack>
+        </StatePanel>
+        @if (_selectedVersion is { } selected)
+        {
+            <MudPaper Outlined="true" Elevation="0" Class="pa-4 my-3" Style="white-space: pre-wrap; overflow-wrap: anywhere">
+                <MudText Typo="Typo.subtitle1">نسخهٔ @PersianText.Digits(selected.Number)</MudText>
+                @selected.Content
+            </MudPaper>
+        }
+    }
+</StatePanel>
+@if (_panel == PanelState.Empty && CanWrite && !_editing)
+{
+    <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="BeginEdit">نوشتن صورت‌جلسه</MudButton>
+}
+@if (_panel == PanelState.Empty && _editing)
+{
+    <MudTextField @bind-Value="_content" Label="متن صورت‌جلسه" Lines="12" MaxLength="Minutes.MaxContentLength" Disabled="_busy" />
+    @if (_contentError is not null) { <MudText Color="Color.Error" role="alert">@_contentError</MudText> }
+    <MudButton Variant="Variant.Filled" Color="Color.Primary" Disabled="_busy" OnClick="SaveAsync">ذخیرهٔ نسخه</MudButton>
+    <MudButton Variant="Variant.Text" Disabled="_busy" OnClick="() => _editing = false">انصراف</MudButton>
+}
+
+@code {
+    private enum CommentAction { None, Reject, Reopen }
+    private MinutesDto? _minutes;
+    private List<MinutesVersionSummaryDto> _versions = [];
+    private MinutesVersionDto? _selectedVersion;
+    private PanelState _panel = PanelState.Loading;
+    private PanelState _versionsPanel = PanelState.Loading;
+    private string? _error;
+    private string? _versionsError;
+    private string? _actionError;
+    private string? _contentError;
+    private string? _commentError;
+    private string _content = "";
+    private string _comment = "";
+    private CommentAction _commentAction;
+    private bool _editing;
+    private bool _busy;
+
+    [Parameter] public Guid MeetingId { get; set; }
+
+    private bool CanWrite => Session.CurrentTenant?.Roles.Any(r => RolePermissions.Grants(r, Permissions.MinutesWrite)) == true;
+    private bool CanApprove => Session.CurrentTenant?.Roles.Any(r => RolePermissions.Grants(r, Permissions.MinutesApprove)) == true;
+
+    protected override Task OnParametersSetAsync() => LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        _panel = PanelState.Loading;
+        _minutes = null;
+        _versions = [];
+        _selectedVersion = null;
+        _editing = false;
+        _commentAction = CommentAction.None;
+        var result = await Api.GetAsync(MeetingId, CancellationToken.None);
+        if (result.Error == ApiErrorKind.NotFound)
+        {
+            // The API also returns 404 when a draft is not visible to this user.
+            _panel = PanelState.Empty;
+            return;
+        }
+        if (!result.Succeeded || result.Value is null)
+        {
+            _error = result.Message ?? ApiResultReader.GenericFailure;
+            _panel = PanelState.Error;
+            return;
+        }
+        _minutes = result.Value;
+        _panel = PanelState.Ready;
+        await LoadVersionsAsync();
+    }
+
+    private async Task LoadVersionsAsync()
+    {
+        _versionsPanel = PanelState.Loading;
+        var result = await Api.VersionsAsync(MeetingId, CancellationToken.None);
+        if (!result.Succeeded || result.Value is null)
+        {
+            _versionsError = result.Message ?? ApiResultReader.GenericFailure;
+            _versionsPanel = PanelState.Error;
+            return;
+        }
+        _versions = result.Value;
+        _versionsPanel = _versions.Count == 0 ? PanelState.Empty : PanelState.Ready;
+    }
+
+    private async Task ShowVersionAsync(int number)
+    {
+        _busy = true;
+        _actionError = null;
+        try
+        {
+            var result = await Api.VersionAsync(MeetingId, number, CancellationToken.None);
+            if (result.Succeeded && result.Value is { } version) _selectedVersion = version;
+            else _actionError = result.Message ?? ApiResultReader.GenericFailure;
+        }
+        finally { _busy = false; }
+    }
+
+    private void BeginEdit()
+    {
+        _content = _minutes?.Content ?? "";
+        _contentError = null;
+        _editing = true;
+    }
+
+    private async Task SaveAsync()
+    {
+        _contentError = string.IsNullOrWhiteSpace(_content) ? "متن صورت‌جلسه را وارد کنید." :
+            _content.Length > Minutes.MaxContentLength ? "متن بیش از حد طولانی است." : null;
+        if (_contentError is not null) return;
+        await MutateAsync(() => Api.SaveAsync(MeetingId, _minutes?.CurrentVersionNumber ?? 0, _content.Trim(), CancellationToken.None));
+    }
+
+    private async Task SubmitAsync()
+    {
+        if (await ConfirmAsync("صورت‌جلسه برای تأیید ارسال شود؟"))
+            await MutateAsync(() => Api.SubmitAsync(MeetingId, CancellationToken.None));
+    }
+
+    private async Task ApproveAsync()
+    {
+        if (await ConfirmAsync("صورت‌جلسه تأیید شود؟"))
+            await MutateAsync(() => Api.ApproveAsync(MeetingId, null, CancellationToken.None));
+    }
+
+    private async Task<bool> ConfirmAsync(string message) =>
+        await Dialogs.ShowMessageBoxAsync(new MessageBoxOptions { Message = message, YesText = "بله", CancelText = "انصراف" }) == true;
+
+    private void BeginComment(CommentAction action)
+    {
+        _comment = "";
+        _commentError = null;
+        _commentAction = action;
+    }
+
+    private async Task SendCommentAsync()
+    {
+        _commentError = string.IsNullOrWhiteSpace(_comment) ? "دلیل را وارد کنید." :
+            _comment.Trim().Length > Minutes.MaxCommentLength ? "دلیل بیش از حد طولانی است." : null;
+        if (_commentError is not null) return;
+        var reason = _comment.Trim();
+        await MutateAsync(() => _commentAction == CommentAction.Reject
+            ? Api.RejectAsync(MeetingId, reason, CancellationToken.None)
+            : Api.ReopenAsync(MeetingId, reason, CancellationToken.None));
+    }
+
+    private async Task MutateAsync(Func<Task<ApiResult<MinutesDto>>> action)
+    {
+        if (_busy) return;
+        _busy = true;
+        _actionError = null;
+        try
+        {
+            var result = await action();
+            if (result.Succeeded && result.Value is { } updated)
+            {
+                _minutes = updated;
+                _panel = PanelState.Ready;
+                _editing = false;
+                _commentAction = CommentAction.None;
+                _selectedVersion = null;
+                Snackbar.Add("صورت‌جلسه به‌روزرسانی شد.", Severity.Success);
+                await LoadVersionsAsync();
+            }
+            else
+            {
+                _actionError = result.Message ?? ApiResultReader.GenericFailure;
+                if (result.Error == ApiErrorKind.VersionConflict)
+                {
+                    var draft = _content;
+                    var wasEditing = _editing;
+                    var message = _actionError;
+                    await LoadAsync();
+                    _actionError = message;
+                    if (wasEditing && CanWrite && (_minutes is null || _minutes.Status is MinutesStatus.Draft or MinutesStatus.Rejected))
+                    {
+                        _content = draft;
+                        _editing = true;
+                    }
+                }
+            }
+        }
+        finally { _busy = false; }
+    }
+
+    private static string StatusText(MinutesStatus status) => status switch
+    {
+        MinutesStatus.Draft => "پیش‌نویس",
+        MinutesStatus.InReview => "در انتظار تأیید",
+        MinutesStatus.Approved => "تأییدشده",
+        MinutesStatus.Rejected => "ردشده",
+        _ => "نامشخص",
+    };
+}

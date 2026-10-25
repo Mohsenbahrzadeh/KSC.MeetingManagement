@@ -29,6 +29,7 @@ builder.Services.AddScoped<MeetingsApiClient>();
 builder.Services.AddScoped<CommitteesApiClient>();
 builder.Services.AddScoped<UsersApiClient>();
 builder.Services.AddScoped<AgendaApiClient>();
+builder.Services.AddScoped<MinutesApiClient>();
 
 var app = builder.Build();
 
