@@ -1,0 +1,202 @@
+@page "/meetings/{MeetingId:guid}/actions"
+@using KSC.MeetingManagement.Application.Actions
+@using KSC.MeetingManagement.Calendar
+@using KSC.MeetingManagement.Domain.Identity
+@using KSC.MeetingManagement.Domain.Meetings
+@using KSC.MeetingManagement.Web.Components.Common
+@using KSC.MeetingManagement.Web.Components.Meetings
+@using KSC.MeetingManagement.Web.Services
+@inject ActionsApiClient Api
+@inject UsersApiClient Users
+@inject SessionState Session
+@inject IDialogService Dialogs
+@inject ISnackbar Snackbar
+
+<PageTitle>اقدامات پیگیری | مدیریت جلسات</PageTitle>
+<MudButton Href="@($"/meetings/{MeetingId}")" Variant="Variant.Text" Size="Size.Small">« بازگشت به جلسه</MudButton>
+<MudStack Row="true" AlignItems="AlignItems.Center" Class="mb-3">
+    <MudText Typo="Typo.h4" Class="ksc-page-title" tabindex="-1">اقدامات پیگیری</MudText>
+    <MudSpacer />
+    @if (CanManage && _panel is PanelState.Ready or PanelState.Empty)
+    {
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" Disabled="_busy" OnClick="() => EditAsync(null)">اقدام جدید</MudButton>
+    }
+</MudStack>
+
+@if (_actionError is not null)
+{
+    <MudAlert Severity="Severity.Error" Variant="Variant.Outlined" role="alert" Class="mb-2">@_actionError</MudAlert>
+}
+<StatePanel State="_panel" ErrorText="@_error" OnRetry="LoadAsync" EmptyText="اقدامی برای این جلسه ثبت نشده است.">
+    <MudTable Items="_items" Dense="true" Hover="true" Elevation="0">
+        <HeaderContent>
+            <MudTh>عنوان</MudTh>
+            <MudTh>مسئول</MudTh>
+            <MudTh>سررسید</MudTh>
+            <MudTh>وضعیت</MudTh>
+            <MudTh><span class="visually-hidden">عملیات</span></MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd DataLabel="عنوان" Style="white-space: pre-wrap; overflow-wrap: anywhere">
+                <strong>@context.Title</strong>
+                @if (!string.IsNullOrWhiteSpace(context.Description)) { <div>@context.Description</div> }
+                @if (context.ResolutionId is not null) { <div>مرتبط با مصوبه</div> }
+                @if (!string.IsNullOrWhiteSpace(context.Note)) { <div>یادداشت: @context.Note</div> }
+            </MudTd>
+            <MudTd DataLabel="مسئول">@OwnerName(context.OwnerUserId)</MudTd>
+            <MudTd DataLabel="سررسید">@DueText(context.DueDate)</MudTd>
+            <MudTd DataLabel="وضعیت">@StatusText(context.Status) @(context.IsOverdue ? "— معوق" : "")</MudTd>
+            <MudTd>
+                @if (CanManage && context.Status is ActionItemStatus.Open or ActionItemStatus.InProgress)
+                {
+                    <MudButton Size="Size.Small" Variant="Variant.Text" Disabled="_busy" OnClick="() => EditAsync(context)" aria-label="@($"ویرایش {context.Title}")">ویرایش</MudButton>
+                }
+                @if ((CanManage || context.OwnerUserId == Session.User?.Id) && context.Status == ActionItemStatus.Open)
+                {
+                    <MudButton Size="Size.Small" Variant="Variant.Text" Disabled="_busy" OnClick="() => StartAsync(context)" aria-label="@($"شروع {context.Title}")">شروع</MudButton>
+                }
+                @if ((CanManage || context.OwnerUserId == Session.User?.Id) && context.Status is ActionItemStatus.Open or ActionItemStatus.InProgress)
+                {
+                    <MudButton Size="Size.Small" Variant="Variant.Text" Disabled="_busy" OnClick="() => BeginNote(context, false)" aria-label="@($"تکمیل {context.Title}")">تکمیل</MudButton>
+                }
+                @if (CanManage && context.Status is ActionItemStatus.Open or ActionItemStatus.InProgress)
+                {
+                    <MudButton Size="Size.Small" Variant="Variant.Text" Color="Color.Error" Disabled="_busy" OnClick="() => BeginNote(context, true)" aria-label="@($"لغو {context.Title}")">لغو</MudButton>
+                }
+            </MudTd>
+        </RowTemplate>
+    </MudTable>
+    @if (_noteItem is { } selected)
+    {
+        <MudPaper Class="pa-3 mt-3" Outlined="true" Elevation="0">
+            <MudText Typo="Typo.subtitle1">@(_cancelling ? "لغو" : "تکمیل") @selected.Title</MudText>
+            <MudTextField @bind-Value="_note" Label="@(_cancelling ? "دلیل لغو" : "یادداشت تکمیل (اختیاری)")" Lines="2" MaxLength="ActionItem.MaxNoteLength" Disabled="_busy" />
+            @if (_noteError is not null) { <MudText Color="Color.Error" role="alert">@_noteError</MudText> }
+            <MudButton Variant="Variant.Filled" Color="@(_cancelling ? Color.Error : Color.Primary)" Disabled="_busy" OnClick="SaveNoteAsync">ثبت</MudButton>
+            <MudButton Variant="Variant.Text" Disabled="_busy" OnClick="() => _noteItem = null">انصراف</MudButton>
+        </MudPaper>
+    }
+</StatePanel>
+
+@code {
+    private static readonly DialogOptions Options = new() { MaxWidth = MaxWidth.Small, FullWidth = true, CloseOnEscapeKey = true };
+    private readonly IKscJalaliCalendar _calendar = KscJalaliCalendarService.Instance;
+    private List<ActionItemDto> _items = [];
+    private Dictionary<Guid, string> _names = [];
+    private PanelState _panel = PanelState.Loading;
+    private string? _error;
+    private string? _actionError;
+    private string? _noteError;
+    private string _note = "";
+    private ActionItemDto? _noteItem;
+    private bool _cancelling;
+    private bool _busy;
+
+    [Parameter] public Guid MeetingId { get; set; }
+
+    private bool CanManage => Session.CurrentTenant?.Roles.Any(r => RolePermissions.Grants(r, Permissions.ActionsManage)) == true;
+
+    protected override Task OnParametersSetAsync() => LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        _panel = PanelState.Loading;
+        _items = [];
+        _noteItem = null;
+        var result = await Api.ListAsync(MeetingId, CancellationToken.None);
+        if (!result.Succeeded || result.Value is null)
+        {
+            _error = result.Message ?? ApiResultReader.GenericFailure;
+            _panel = PanelState.Error;
+            return;
+        }
+        _items = result.Value;
+        _names = [];
+        if (_items.Count > 0 && await Users.ListAsync(CancellationToken.None) is { Succeeded: true, Value: { } members })
+            _names = members.ToDictionary(m => m.UserId, m => string.IsNullOrWhiteSpace(m.DisplayName) ? m.Email : m.DisplayName);
+        _panel = _items.Count == 0 ? PanelState.Empty : PanelState.Ready;
+    }
+
+    private string OwnerName(Guid id) => _names.TryGetValue(id, out var name) ? name : id == Session.User?.Id ? "شما" : "عضو سازمان";
+
+    private string DueText(DateOnly due)
+    {
+        try { return PersianText.Format(_calendar.FromGregorian(due)); }
+        catch (ArgumentOutOfRangeException) { return due.ToString("yyyy/MM/dd"); }
+    }
+
+    private async Task EditAsync(ActionItemDto? item)
+    {
+        if (_busy) return;
+        var parameters = new DialogParameters<ActionFormDialog> { { d => d.MeetingId, MeetingId }, { d => d.Item, item } };
+        var dialog = await Dialogs.ShowAsync<ActionFormDialog>(item is null ? "اقدام جدید" : "ویرایش اقدام", parameters, Options);
+        if (await dialog.Result is { Canceled: false })
+        {
+            Snackbar.Add("اقدام ذخیره شد.", Severity.Success);
+            await LoadAsync();
+        }
+    }
+
+    private async Task StartAsync(ActionItemDto item)
+    {
+        if (_busy || await Dialogs.ShowMessageBoxAsync(new MessageBoxOptions { Message = $"اقدام «{item.Title}» شروع شود؟", YesText = "بله", CancelText = "انصراف" }) != true) return;
+        await MutateAsync(() => Api.StartAsync(MeetingId, item.Id, item.LockVersion, CancellationToken.None));
+    }
+
+    private void BeginNote(ActionItemDto item, bool cancelling)
+    {
+        _noteItem = item;
+        _cancelling = cancelling;
+        _note = "";
+        _noteError = null;
+    }
+
+    private async Task SaveNoteAsync()
+    {
+        if (_busy || _noteItem is not { } item) return;
+        _noteError = _cancelling && string.IsNullOrWhiteSpace(_note) ? "دلیل لغو را وارد کنید." :
+            _note.Trim().Length > ActionItem.MaxNoteLength ? "یادداشت بیش از حد طولانی است." : null;
+        if (_noteError is not null) return;
+        var text = _note.Trim();
+        await MutateAsync(() => _cancelling
+            ? Api.CancelAsync(MeetingId, item.Id, item.LockVersion, text, CancellationToken.None)
+            : Api.CompleteAsync(MeetingId, item.Id, item.LockVersion, text.Length == 0 ? null : text, CancellationToken.None));
+    }
+
+    private async Task MutateAsync(Func<Task<ApiResult<ActionItemDto>>> action)
+    {
+        _busy = true;
+        _actionError = null;
+        try
+        {
+            var result = await action();
+            if (result.Succeeded && result.Value is { } updated)
+            {
+                var index = _items.FindIndex(i => i.Id == updated.Id);
+                if (index >= 0) _items[index] = updated;
+                _noteItem = null;
+                Snackbar.Add("اقدام به‌روزرسانی شد.", Severity.Success);
+            }
+            else
+            {
+                _actionError = result.Message ?? ApiResultReader.GenericFailure;
+                if (result.Error == ApiErrorKind.VersionConflict)
+                {
+                    var message = _actionError;
+                    await LoadAsync();
+                    _actionError = message;
+                }
+            }
+        }
+        finally { _busy = false; }
+    }
+
+    private static string StatusText(ActionItemStatus status) => status switch
+    {
+        ActionItemStatus.Open => "باز",
+        ActionItemStatus.InProgress => "در حال انجام",
+        ActionItemStatus.Done => "انجام‌شده",
+        ActionItemStatus.Cancelled => "لغوشده",
+        _ => "نامشخص",
+    };
+}
