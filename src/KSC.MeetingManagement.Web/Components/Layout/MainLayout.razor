@@ -66,6 +66,10 @@
                             <MudNavLink Href="@item.Href" Icon="@item.Icon"
                                         Match="@(item.ExactMatch ? NavLinkMatch.All : NavLinkMatch.Prefix)">@item.Title</MudNavLink>
                         }
+                        @if (CanViewAudit)
+                        {
+                            <MudNavLink Href="/audit" Icon="@Icons.Material.Filled.History">دفتر ممیزی</MudNavLink>
+                        }
                     </MudNavMenu>
                 </nav>
             </MudDrawer>
@@ -93,6 +97,7 @@
 </div>
 
 @code {
+    private bool CanViewAudit => Session.CurrentTenant?.Roles.Any(r => KSC.MeetingManagement.Domain.Identity.RolePermissions.Grants(r, KSC.MeetingManagement.Domain.Identity.Permissions.AuditView)) == true;
     private bool _drawerOpen = true;
     private bool _dark;
 
