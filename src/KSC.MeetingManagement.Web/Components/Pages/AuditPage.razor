@@ -1,0 +1,176 @@
+@page "/audit"
+@using KSC.MeetingManagement.Application.Audit
+@using KSC.MeetingManagement.Calendar
+@using KSC.MeetingManagement.Calendar.Components
+@using KSC.MeetingManagement.Domain.Audit
+@using KSC.MeetingManagement.Domain.Identity
+@using KSC.MeetingManagement.Web.Services
+@inject AuditApiClient Api
+@inject SessionState Session
+
+<PageTitle>دفتر ممیزی | مدیریت جلسات</PageTitle>
+<MudText Typo="Typo.h4" Class="ksc-page-title mb-3" tabindex="-1">دفتر ممیزی</MudText>
+@if (!CanView)
+{
+    <MudAlert Severity="Severity.Warning" role="alert">شما دسترسی مشاهدهٔ دفتر ممیزی را ندارید.</MudAlert>
+}
+else
+{
+    <MudPaper Class="pa-3 mb-3" Outlined="true" Elevation="0">
+        <MudGrid Spacing="2">
+            <MudItem xs="12" sm="6" md="3"><KscJalaliDatePicker @bind-Value="_from" Label="از تاریخ" /></MudItem>
+            <MudItem xs="12" sm="6" md="3"><KscJalaliDatePicker @bind-Value="_to" Label="تا تاریخ (شامل)" /></MudItem>
+            <MudItem xs="12" sm="6" md="3"><MudTextField @bind-Value="_action" Label="عملیات" MaxLength="AuditEvent.MaxActionLength" /></MudItem>
+            <MudItem xs="12" sm="6" md="3">
+                <MudSelect T="AuditOutcome?" @bind-Value="_outcome" Label="نتیجه" Clearable="true">
+                    <MudSelectItem T="AuditOutcome?" Value="@((AuditOutcome?)AuditOutcome.Success)">موفق</MudSelectItem>
+                    <MudSelectItem T="AuditOutcome?" Value="@((AuditOutcome?)AuditOutcome.Denied)">رد دسترسی</MudSelectItem>
+                    <MudSelectItem T="AuditOutcome?" Value="@((AuditOutcome?)AuditOutcome.Failure)">ناموفق</MudSelectItem>
+                </MudSelect>
+            </MudItem>
+            <MudItem xs="12" sm="6" md="4"><MudTextField @bind-Value="_actor" Label="شناسهٔ عامل" /></MudItem>
+            <MudItem xs="12" sm="6" md="4"><MudTextField @bind-Value="_resource" Label="شناسهٔ منبع" /></MudItem>
+            <MudItem xs="12" md="4"><MudButton Variant="Variant.Filled" Color="Color.Primary" Disabled="_loading" OnClick="SearchAsync">جست‌وجو</MudButton></MudItem>
+        </MudGrid>
+        @if (_validation is not null) { <MudText Color="Color.Error" role="alert">@_validation</MudText> }
+    </MudPaper>
+
+    <StatePanel State="_panel" ErrorText="@_error" OnRetry="SearchAsync" EmptyText="رویدادی یافت نشد.">
+        <MudTable Items="_items" Dense="true" Hover="true" Elevation="0">
+            <HeaderContent>
+                <MudTh>زمان</MudTh><MudTh>عملیات</MudTh><MudTh>عامل</MudTh><MudTh>منبع</MudTh><MudTh>نتیجه</MudTh><MudTh>همبستگی</MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                <MudTd DataLabel="زمان">@Stamp(context.OccurredAtUtc)</MudTd>
+                <MudTd DataLabel="عملیات">@context.Action</MudTd>
+                <MudTd DataLabel="عامل" Style="overflow-wrap: anywhere">@context.ActorType @(context.ActorId?.ToString() ?? "—")</MudTd>
+                <MudTd DataLabel="منبع" Style="overflow-wrap: anywhere">@context.ResourceType @(context.ResourceId?.ToString() ?? "—")</MudTd>
+                <MudTd DataLabel="نتیجه">@OutcomeText(context.Outcome)</MudTd>
+                <MudTd DataLabel="همبستگی" Style="overflow-wrap: anywhere">@context.CorrelationId</MudTd>
+            </RowTemplate>
+        </MudTable>
+    </StatePanel>
+    @if ((_panel is PanelState.Ready or PanelState.Empty) && (_skip > 0 || _hasNext))
+    {
+        <MudStack Row="true" Justify="Justify.Center" Class="mt-3">
+            <MudButton Variant="Variant.Outlined" Disabled="@(_loading || _skip == 0)" OnClick="PreviousAsync">قبلی</MudButton>
+            <MudButton Variant="Variant.Outlined" Disabled="@(_loading || !_hasNext)" OnClick="NextAsync">بعدی</MudButton>
+        </MudStack>
+    }
+}
+
+@code {
+    private const int PageSize = 50;
+    private readonly IKscJalaliCalendar _calendar = KscJalaliCalendarService.Instance;
+    private readonly CalendarLayout _layout = new(TehranClock.TimeZone);
+    private List<AuditEventDto> _items = [];
+    private PanelState _panel = PanelState.Loading;
+    private JalaliDate? _from;
+    private JalaliDate? _to;
+    private string? _action;
+    private string? _actor;
+    private string? _resource;
+    private AuditOutcome? _outcome;
+    private AuditQuery? _query;
+    private string? _validation;
+    private string? _error;
+    private int _skip;
+    private bool _hasNext;
+    private bool _loading;
+
+    private bool CanView => Session.CurrentTenant?.Roles.Any(r => RolePermissions.Grants(r, Permissions.AuditView)) == true;
+
+    protected override Task OnInitializedAsync() => CanView ? SearchAsync() : Task.CompletedTask;
+
+    private async Task SearchAsync()
+    {
+        if (!CanView || _loading) return;
+        _validation = null;
+        if (!TryId(_actor, out var actor) || !TryId(_resource, out var resource))
+        {
+            _validation = "شناسهٔ عامل و منبع باید شناسهٔ معتبر باشند.";
+            return;
+        }
+        DateTimeOffset? from;
+        DateTimeOffset? to;
+        try
+        {
+            from = _from is { } start ? StartOfDay(_calendar.ToGregorian(start)) : null;
+            to = _to is { } end ? StartOfDay(_calendar.ToGregorian(end).AddDays(1)) : null;
+        }
+        catch (ArgumentOutOfRangeException)
+        {
+            _validation = "بازهٔ تاریخ معتبر نیست.";
+            return;
+        }
+        if (from is { } f && to is { } t && (t <= f || t - f > AuditQueryService.MaxRange))
+        {
+            _validation = "بازهٔ تاریخ باید معتبر و حداکثر ۳۶۶ روز باشد.";
+            return;
+        }
+        _query = new AuditQuery(from, to, string.IsNullOrWhiteSpace(_action) ? null : _action.Trim(), actor, resource, _outcome, 0, PageSize);
+        _skip = 0;
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        if (!CanView || _query is null) return;
+        _loading = true;
+        _panel = PanelState.Loading;
+        try
+        {
+            var result = await Api.SearchAsync(_query with { Skip = _skip }, CancellationToken.None);
+            if (!result.Succeeded || result.Value is null)
+            {
+                _error = result.Message ?? ApiResultReader.GenericFailure;
+                _panel = PanelState.Error;
+                return;
+            }
+            _items = result.Value;
+            _hasNext = _items.Count == PageSize;
+            _panel = _items.Count == 0 ? PanelState.Empty : PanelState.Ready;
+        }
+        finally { _loading = false; }
+    }
+
+    private async Task NextAsync()
+    {
+        if (_loading || !_hasNext) return;
+        _skip += PageSize;
+        await LoadAsync();
+    }
+
+    private async Task PreviousAsync()
+    {
+        if (_loading || _skip == 0) return;
+        _skip -= PageSize;
+        await LoadAsync();
+    }
+
+    private static DateTimeOffset StartOfDay(DateOnly day)
+    {
+        var local = day.ToDateTime(TimeOnly.MinValue, DateTimeKind.Unspecified);
+        return new DateTimeOffset(local, TehranClock.TimeZone.GetUtcOffset(local));
+    }
+
+    private string Stamp(DateTimeOffset instant) =>
+        $"{PersianText.Format(_layout.DayOf(instant))} {PersianText.Time(_layout.TimeOf(instant))}";
+
+    private static bool TryId(string? input, out Guid? id)
+    {
+        id = null;
+        if (string.IsNullOrWhiteSpace(input)) return true;
+        if (!Guid.TryParse(input.Trim(), out var value)) return false;
+        id = value;
+        return true;
+    }
+
+    private static string OutcomeText(AuditOutcome outcome) => outcome switch
+    {
+        AuditOutcome.Success => "موفق",
+        AuditOutcome.Denied => "رد دسترسی",
+        AuditOutcome.Failure => "ناموفق",
+        _ => "نامشخص",
+    };
+}
