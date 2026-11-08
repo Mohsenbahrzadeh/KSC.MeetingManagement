@@ -28,6 +28,7 @@ builder.Services.AddScoped<IMeetingCalendarDataProvider, ApiMeetingCalendarDataP
 builder.Services.AddScoped<MeetingsApiClient>();
 builder.Services.AddScoped<CommitteesApiClient>();
 builder.Services.AddScoped<UsersApiClient>();
+builder.Services.AddScoped<ParticipantsApiClient>();
 builder.Services.AddScoped<AgendaApiClient>();
 builder.Services.AddScoped<MinutesApiClient>();
 builder.Services.AddScoped<ResolutionsApiClient>();
