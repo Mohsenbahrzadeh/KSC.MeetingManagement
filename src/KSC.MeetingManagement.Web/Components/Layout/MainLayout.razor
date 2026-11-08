@@ -70,6 +70,10 @@
                         {
                             <MudNavLink Href="/audit" Icon="@Icons.Material.Filled.History">دفتر ممیزی</MudNavLink>
                         }
+                        @if (CanViewReports)
+                        {
+                            <MudNavLink Href="/reports" Icon="@Icons.Material.Filled.Assessment">گزارش‌ها</MudNavLink>
+                        }
                     </MudNavMenu>
                 </nav>
             </MudDrawer>
@@ -98,6 +102,7 @@
 
 @code {
     private bool CanViewAudit => Session.CurrentTenant?.Roles.Any(r => KSC.MeetingManagement.Domain.Identity.RolePermissions.Grants(r, KSC.MeetingManagement.Domain.Identity.Permissions.AuditView)) == true;
+    private bool CanViewReports => Session.CurrentTenant?.Roles.Any(r => KSC.MeetingManagement.Domain.Identity.RolePermissions.Grants(r, KSC.MeetingManagement.Domain.Identity.Permissions.ReportsView)) == true;
     private bool _drawerOpen = true;
     private bool _dark;
 

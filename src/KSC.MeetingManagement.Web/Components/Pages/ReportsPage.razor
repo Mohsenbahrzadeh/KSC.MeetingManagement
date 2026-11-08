@@ -1,0 +1,313 @@
+@page "/reports"
+@using KSC.MeetingManagement.Application.Committees
+@using KSC.MeetingManagement.Application.Reports
+@using KSC.MeetingManagement.Calendar
+@using KSC.MeetingManagement.Calendar.Components
+@using KSC.MeetingManagement.Domain.Identity
+@using KSC.MeetingManagement.Domain.Meetings
+@using KSC.MeetingManagement.Web.Services
+@using System.Text
+@inject ReportsApiClient Api
+@inject CommitteesApiClient CommitteesApi
+@inject SessionState Session
+@inject IJSRuntime JS
+@implements IAsyncDisposable
+
+<PageTitle>گزارش‌ها | مدیریت جلسات</PageTitle>
+<MudText Typo="Typo.h4" Class="ksc-page-title mb-3" tabindex="-1">گزارش‌های سازمان</MudText>
+@if (!CanView)
+{
+    <MudAlert Severity="Severity.Warning" role="alert">شما دسترسی مشاهدهٔ گزارش‌ها را ندارید.</MudAlert>
+}
+else
+{
+    <MudPaper Class="pa-3 mb-3" Outlined="true" Elevation="0">
+        <MudGrid Spacing="2" Class="align-center">
+            <MudItem xs="12" sm="6" md="3"><KscJalaliDatePicker @bind-Value="_from" Label="از تاریخ" Required="true" /></MudItem>
+            <MudItem xs="12" sm="6" md="3"><KscJalaliDatePicker @bind-Value="_to" Label="تا تاریخ (شامل)" Required="true" /></MudItem>
+            <MudItem xs="12" sm="6" md="3">
+                <MudSelect T="MeetingStatus?" @bind-Value="_status" Label="وضعیت جلسه" Clearable="true">
+                    @foreach (var status in Enum.GetValues<MeetingStatus>())
+                    {
+                        <MudSelectItem T="MeetingStatus?" Value="@((MeetingStatus?)status)">@StatusText(status)</MudSelectItem>
+                    }
+                </MudSelect>
+            </MudItem>
+            <MudItem xs="12" sm="6" md="3">
+                <MudSelect T="Guid?" @bind-Value="_committeeId" Label="کمیته" Clearable="true">
+                    @foreach (var committee in _committees)
+                    {
+                        <MudSelectItem T="Guid?" Value="@((Guid?)committee.Id)">@committee.Name</MudSelectItem>
+                    }
+                </MudSelect>
+            </MudItem>
+            <MudItem xs="12"><MudButton Variant="Variant.Filled" Color="Color.Primary" Disabled="_loading" OnClick="RunAsync">اجرای گزارش‌ها</MudButton></MudItem>
+        </MudGrid>
+        <MudText Typo="Typo.caption" Color="Color.Secondary">بازهٔ تاریخ برای همهٔ گزارش‌هاست؛ فیلتر وضعیت و کمیته فقط روی گزارش جلسات اعمال می‌شود.</MudText>
+        @if (_validation is not null) { <MudText Color="Color.Error" role="alert">@_validation</MudText> }
+    </MudPaper>
+
+    @if (_error is not null) { <MudAlert Severity="Severity.Error" Variant="Variant.Outlined" role="alert">@_error</MudAlert> }
+    @if (_meetingReport is not null)
+    {
+        <MudPaper Class="pa-3 mb-3" Outlined="true" Elevation="0">
+            <MudStack Row="true" AlignItems="AlignItems.Center"><MudText Typo="Typo.h6">گزارش جلسات</MudText><MudSpacer /><MudButton Variant="Variant.Outlined" Disabled="_loading" OnClick="DownloadCsvAsync">دریافت CSV</MudButton></MudStack>
+            <MudText Typo="Typo.body2" Class="mb-2">مجموع: @PersianText.Digits(_meetingReport.TotalCount)</MudText>
+            <MudStack Row="true" Spacing="1" Wrap="Wrap.Wrap" Class="mb-2">
+                @foreach (var count in _meetingReport.ByStatus.OrderBy(x => x.Key))
+                {
+                    <MudChip T="string" Size="Size.Small">@StatusText(count.Key): @PersianText.Digits(count.Value)</MudChip>
+                }
+            </MudStack>
+            <MudTable Items="_meetingReport.Rows" Dense="true" Hover="true" Elevation="0">
+                <HeaderContent><MudTh>شماره</MudTh><MudTh>عنوان</MudTh><MudTh>وضعیت</MudTh><MudTh>شروع</MudTh></HeaderContent>
+                <RowTemplate>
+                    <MudTd DataLabel="شماره">@(context.Number is null ? "—" : PersianText.Digits(context.Number))</MudTd>
+                    <MudTd DataLabel="عنوان"><MudLink Href="@($"/meetings/{context.Id}")">@context.Title</MudLink></MudTd>
+                    <MudTd DataLabel="وضعیت">@StatusText(context.Status)</MudTd>
+                    <MudTd DataLabel="شروع">@(context.StartUtc is { } start ? Stamp(start) : "—")</MudTd>
+                </RowTemplate>
+            </MudTable>
+            <MudStack Row="true" Justify="Justify.Center" Class="mt-2">
+                <MudButton Variant="Variant.Text" Disabled="@(_loading || _skip == 0)" OnClick="PreviousAsync">قبلی</MudButton>
+                <MudButton Variant="Variant.Text" Disabled="@(_loading || !_hasMoreMeetings)" OnClick="NextAsync">بعدی</MudButton>
+            </MudStack>
+        </MudPaper>
+    }
+    @if (_attendance is not null)
+    {
+        <MudPaper Class="pa-3 mb-3" Outlined="true" Elevation="0">
+            <MudText Typo="Typo.h6">گزارش حضور و دعوت‌ها</MudText>
+            <MudTable Items="_attendance" Dense="true" Hover="true" Elevation="0">
+                <HeaderContent><MudTh>جلسه</MudTh><MudTh>دعوت‌شده</MudTh><MudTh>پذیرفته</MudTh><MudTh>ردشده</MudTh><MudTh>مهمان</MudTh><MudTh>حاضر</MudTh><MudTh>دقایق حضور</MudTh></HeaderContent>
+                <RowTemplate>
+                    <MudTd DataLabel="جلسه">@context.Title</MudTd><MudTd DataLabel="دعوت‌شده">@PersianText.Digits(context.Invited)</MudTd>
+                    <MudTd DataLabel="پذیرفته">@PersianText.Digits(context.Accepted)</MudTd><MudTd DataLabel="ردشده">@PersianText.Digits(context.Declined)</MudTd>
+                    <MudTd DataLabel="مهمان">@PersianText.Digits(context.Guests)</MudTd><MudTd DataLabel="حاضر">@PersianText.Digits(context.Present)</MudTd>
+                    <MudTd DataLabel="دقایق حضور">@PersianText.Digits(context.PresentMinutes.ToString("0.#", System.Globalization.CultureInfo.InvariantCulture))</MudTd>
+                </RowTemplate>
+            </MudTable>
+        </MudPaper>
+    }
+    @if (_actions is not null)
+    {
+        <MudPaper Class="pa-3 mb-3" Outlined="true" Elevation="0">
+            <MudText Typo="Typo.h6">گزارش اقدامات پیگیری</MudText>
+            <MudStack Row="true" Spacing="2" Wrap="Wrap.Wrap" Class="my-2">
+                <MudChip T="string">کل: @PersianText.Digits(_actions.Total)</MudChip><MudChip T="string">باز: @PersianText.Digits(_actions.Open)</MudChip>
+                <MudChip T="string">در حال انجام: @PersianText.Digits(_actions.InProgress)</MudChip><MudChip T="string">انجام‌شده: @PersianText.Digits(_actions.Done)</MudChip>
+                <MudChip T="string">لغوشده: @PersianText.Digits(_actions.Cancelled)</MudChip><MudChip T="string" Color="Color.Error">معوق: @PersianText.Digits(_actions.Overdue)</MudChip>
+            </MudStack>
+            <MudTable Items="_actions.ByOwner" Dense="true" Hover="true" Elevation="0">
+                <HeaderContent><MudTh>مسئول (شناسه)</MudTh><MudTh>فعال</MudTh><MudTh>معوق</MudTh><MudTh>انجام‌شده</MudTh></HeaderContent>
+                <RowTemplate><MudTd DataLabel="مسئول">@context.OwnerUserId</MudTd><MudTd DataLabel="فعال">@PersianText.Digits(context.Active)</MudTd><MudTd DataLabel="معوق">@PersianText.Digits(context.Overdue)</MudTd><MudTd DataLabel="انجام‌شده">@PersianText.Digits(context.Done)</MudTd></RowTemplate>
+            </MudTable>
+        </MudPaper>
+    }
+    @if (_resolutions is not null)
+    {
+        <MudPaper Class="pa-3 mb-3" Outlined="true" Elevation="0">
+            <MudText Typo="Typo.h6">گزارش مصوبات</MudText>
+            <MudStack Row="true" Spacing="2" Wrap="Wrap.Wrap" Class="my-2">
+                <MudChip T="string">کل: @PersianText.Digits(_resolutions.Total)</MudChip><MudChip T="string">پیش‌نویس: @PersianText.Digits(_resolutions.Draft)</MudChip>
+                <MudChip T="string">تصویب‌شده: @PersianText.Digits(_resolutions.Adopted)</MudChip><MudChip T="string">ردشده: @PersianText.Digits(_resolutions.Rejected)</MudChip>
+                <MudChip T="string">باطل‌شده: @PersianText.Digits(_resolutions.Revoked)</MudChip>
+            </MudStack>
+        </MudPaper>
+    }
+}
+
+@code {
+    private const int PageSize = 50;
+    private readonly IKscJalaliCalendar _calendar = KscJalaliCalendarService.Instance;
+    private readonly CalendarLayout _layout = new(TehranClock.TimeZone);
+    private readonly List<CommitteeDto> _committees = [];
+    private JalaliDate? _from;
+    private JalaliDate? _to;
+    private MeetingStatus? _status;
+    private Guid? _committeeId;
+    private DateTimeOffset _fromUtc;
+    private DateTimeOffset _toUtc;
+    private int _skip;
+    private bool _hasMoreMeetings;
+    private bool _loading;
+    private string? _validation;
+    private string? _error;
+    private MeetingReport? _meetingReport;
+    private List<AttendanceRow>? _attendance;
+    private ActionsSummary? _actions;
+    private ResolutionsSummary? _resolutions;
+    private IJSObjectReference? _module;
+
+    private bool CanView => Session.CurrentTenant?.Roles.Any(r => RolePermissions.Grants(r, Permissions.ReportsView)) == true;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var today = _calendar.FromGregorian(DateOnly.FromDateTime(TimeZoneInfo.ConvertTime(DateTimeOffset.UtcNow, TehranClock.TimeZone).DateTime));
+        _from = _calendar.FromGregorian(_calendar.ToGregorian(today).AddDays(-29));
+        _to = today;
+        if (CanView && await CommitteesApi.ListAsync(CancellationToken.None) is { Succeeded: true, Value: { } committees })
+            _committees.AddRange(committees.Where(c => c.IsActive));
+    }
+
+    private async Task RunAsync()
+    {
+        if (!CanView || _loading) return;
+        _validation = null;
+        _error = null;
+        _meetingReport = null;
+        _attendance = null;
+        _actions = null;
+        _resolutions = null;
+        if (_from is not { } from || _to is not { } to)
+        {
+            _validation = "تاریخ آغاز و پایان را انتخاب کنید.";
+            return;
+        }
+
+        try
+        {
+            var first = _calendar.ToGregorian(from);
+            var lastExclusive = _calendar.ToGregorian(to).AddDays(1);
+            _fromUtc = StartOfDay(first);
+            _toUtc = StartOfDay(lastExclusive);
+            if (_toUtc <= _fromUtc || _toUtc - _fromUtc > ReportService.MaxRange)
+            {
+                _validation = "بازهٔ گزارش باید معتبر و حداکثر ۳۶۶ روز باشد.";
+                return;
+            }
+        }
+        catch (ArgumentOutOfRangeException)
+        {
+            _validation = "تاریخ واردشده معتبر نیست.";
+            return;
+        }
+
+        _skip = 0;
+        await LoadMeetingsAsync();
+        if (_meetingReport is null) return;
+        _loading = true;
+        try
+        {
+            var fromDay = _calendar.ToGregorian(from);
+            var toDay = _calendar.ToGregorian(to);
+            var attendanceTask = LoadAllAttendanceAsync();
+            var actionsTask = Api.ActionsAsync(fromDay, toDay, CancellationToken.None);
+            var resolutionsTask = Api.ResolutionsAsync(_fromUtc, _toUtc, CancellationToken.None);
+            await Task.WhenAll(attendanceTask, actionsTask, resolutionsTask);
+            var errors = new List<string>();
+            if (attendanceTask.Result is { Succeeded: true, Value: { } attendance }) _attendance = attendance;
+            else errors.Add(attendanceTask.Result.Message ?? ApiResultReader.GenericFailure);
+            if (actionsTask.Result is { Succeeded: true, Value: { } actions }) _actions = actions;
+            else errors.Add(actionsTask.Result.Message ?? ApiResultReader.GenericFailure);
+            if (resolutionsTask.Result is { Succeeded: true, Value: { } resolutions }) _resolutions = resolutions;
+            else errors.Add(resolutionsTask.Result.Message ?? ApiResultReader.GenericFailure);
+            if (errors.Count > 0) _error = "بخشی از گزارش‌ها بارگیری نشد: " + string.Join(" ", errors.Distinct());
+        }
+        finally { _loading = false; }
+    }
+
+    private async Task LoadMeetingsAsync()
+    {
+        _loading = true;
+        try
+        {
+            var result = await Api.MeetingsAsync(_fromUtc, _toUtc, _status, null, _committeeId, _skip, PageSize, CancellationToken.None);
+            if (!result.Succeeded || result.Value is null)
+            {
+                _error = result.Message ?? ApiResultReader.GenericFailure;
+                return;
+            }
+            _meetingReport = result.Value;
+            _hasMoreMeetings = _skip + _meetingReport.Rows.Count < _meetingReport.TotalCount;
+        }
+        finally { _loading = false; }
+    }
+
+    private async Task<ApiResult<List<AttendanceRow>>> LoadAllAttendanceAsync()
+    {
+        const int take = 500;
+        var rows = new List<AttendanceRow>();
+        for (var skip = 0; ; skip += take)
+        {
+            var page = await Api.AttendanceAsync(_fromUtc, _toUtc, skip, take, CancellationToken.None);
+            if (!page.Succeeded || page.Value is null)
+                return ApiResult.Fail<List<AttendanceRow>>(page.Error, page.Message ?? ApiResultReader.GenericFailure);
+
+            rows.AddRange(page.Value);
+            if (page.Value.Count < take) return ApiResult.Ok(rows);
+        }
+    }
+
+    private async Task NextAsync()
+    {
+        if (_loading || !_hasMoreMeetings) return;
+        _skip += PageSize;
+        await LoadMeetingsAsync();
+    }
+
+    private async Task PreviousAsync()
+    {
+        if (_loading || _skip == 0) return;
+        _skip = Math.Max(0, _skip - PageSize);
+        await LoadMeetingsAsync();
+    }
+
+    private async Task DownloadCsvAsync()
+    {
+        if (!CanView || _loading) return;
+        _loading = true;
+        try
+        {
+            var csv = new StringBuilder();
+            const int exportPageSize = 500;
+            var totalCount = _meetingReport?.TotalCount ?? 0;
+            for (var skip = 0; skip == 0 || skip < totalCount; skip += exportPageSize)
+            {
+                var result = await Api.MeetingsCsvAsync(_fromUtc, _toUtc, _status, null, _committeeId, skip, exportPageSize, CancellationToken.None);
+                if (!result.Succeeded || result.Value is null)
+                {
+                    _error = result.Message ?? ApiResultReader.GenericFailure;
+                    return;
+                }
+
+                var content = result.Value;
+                if (skip > 0)
+                {
+                    var headerEnd = content.IndexOf("\r\n", StringComparison.Ordinal);
+                    if (headerEnd >= 0) content = content[(headerEnd + 2)..];
+                    content = content.TrimStart('\uFEFF');
+                }
+                csv.Append(content);
+            }
+            _module ??= await JS.InvokeAsync<IJSObjectReference>("import", "./reports.js");
+            await _module.InvokeVoidAsync("downloadText", "meetings.csv", "text/csv;charset=utf-8", csv.ToString());
+        }
+        catch (JSException) { _error = ApiResultReader.GenericFailure; }
+        finally { _loading = false; }
+    }
+
+    private static DateTimeOffset StartOfDay(DateOnly date)
+    {
+        var local = date.ToDateTime(TimeOnly.MinValue, DateTimeKind.Unspecified);
+        return new DateTimeOffset(local, TehranClock.TimeZone.GetUtcOffset(local));
+    }
+
+    private string Stamp(DateTimeOffset value) =>
+        $"{PersianText.Format(_layout.DayOf(value))} {PersianText.Time(_layout.TimeOf(value))}";
+
+    private static string StatusText(MeetingStatus status) => status switch
+    {
+        MeetingStatus.Draft => "پیش‌نویس", MeetingStatus.Scheduled => "برنامه‌ریزی‌شده", MeetingStatus.InProgress => "در حال برگزاری",
+        MeetingStatus.Completed => "پایان‌یافته", MeetingStatus.Postponed => "به‌تعویق‌افتاده", MeetingStatus.Cancelled => "لغوشده", _ => "نامشخص",
+    };
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_module is not null)
+        {
+            try { await _module.DisposeAsync(); }
+            catch (JSDisconnectedException) { /* Circuit already closed. */ }
+        }
+    }
+}
