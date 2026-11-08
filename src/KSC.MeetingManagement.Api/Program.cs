@@ -1,4 +1,5 @@
 using KSC.MeetingManagement.Api.Authentication;
+using KSC.MeetingManagement.Api;
 using KSC.MeetingManagement.Api.Authorization;
 using KSC.MeetingManagement.Api.Observability;
 using KSC.MeetingManagement.Api.Security;
@@ -74,6 +75,11 @@ builder.Services.AddSingleton<IAuthorizationPolicyProvider, PermissionPolicyProv
 builder.Services.AddScoped<IAuthorizationHandler, PermissionHandler>();
 
 var app = builder.Build();
+
+await DevelopmentAdminSeeder.SeedIfEnabledAsync(
+    app.Services,
+    app.Environment.IsDevelopment(),
+    app.Configuration.GetValue<bool>("DevelopmentSeed:Enabled"));
 
 app.UseMiddleware<CorrelationIdMiddleware>();
 app.UseMiddleware<SecurityHeadersMiddleware>();
