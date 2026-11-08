@@ -18,6 +18,16 @@ POST /api/v1/setup        header: X-Setup-Token: <Setup__Token>
 
 Works only while the system has no organisation (otherwise 409). Creates the organisation and its first user with the `TenantOwner` role.
 
+### Local development starter account
+
+The `http` and `https` launch profiles seed a starter owner in **Development only**, and only when the database has no tenant or user:
+
+- Email (login): `admin@example.com` (display name: `admin`)
+- Password: `Admin123456@`
+- Organisation slug: `local`
+
+For a direct `dotnet run`/container launch without a launch profile, set `DevelopmentSeed__Enabled=true` explicitly. The API checks the Development environment as well as this switch; it never seeds this account in Production. Existing databases are not changed. This fixed credential is for disposable local development only—never use or expose it on a shared or production environment. To provision production, use the one-time `/api/v1/setup` flow above with a unique secret and password.
+
 ## Sign-in
 
 `POST /api/v1/auth/login` returns a 15 minute access token and a 14 day refresh token (rotating; reusing an old one revokes all sessions of that user).
