@@ -1,0 +1,192 @@
+@page "/meetings/{MeetingId:guid}/resolutions"
+@using KSC.MeetingManagement.Application.Resolutions
+@using KSC.MeetingManagement.Calendar
+@using KSC.MeetingManagement.Domain.Identity
+@using KSC.MeetingManagement.Domain.Meetings
+@using KSC.MeetingManagement.Web.Components.Common
+@using KSC.MeetingManagement.Web.Components.Meetings
+@using KSC.MeetingManagement.Web.Services
+@inject ResolutionsApiClient Api
+@inject AgendaApiClient Agenda
+@inject SessionState Session
+@inject IDialogService Dialogs
+@inject ISnackbar Snackbar
+
+<PageTitle>مصوبات | مدیریت جلسات</PageTitle>
+<MudButton Href="@($"/meetings/{MeetingId}")" Variant="Variant.Text" Size="Size.Small">« بازگشت به جلسه</MudButton>
+<MudStack Row="true" AlignItems="AlignItems.Center" Class="mb-3">
+    <MudText Typo="Typo.h4" Class="ksc-page-title" tabindex="-1">مصوبات</MudText>
+    <MudSpacer />
+    @if (CanWrite && _panel is PanelState.Ready or PanelState.Empty)
+    {
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" Disabled="_busy" OnClick="() => EditAsync(null)">مصوبهٔ جدید</MudButton>
+    }
+</MudStack>
+
+@if (_actionError is not null)
+{
+    <MudAlert Severity="Severity.Error" Variant="Variant.Outlined" role="alert" Class="mb-2">@_actionError</MudAlert>
+}
+<StatePanel State="_panel" ErrorText="@_error" OnRetry="LoadAsync" EmptyText="مصوبه‌ای برای این جلسه ثبت نشده است.">
+    <MudTable Items="_items" Dense="true" Hover="true" Elevation="0">
+        <HeaderContent>
+            <MudTh>شماره</MudTh>
+            <MudTh>متن و موضوع</MudTh>
+            <MudTh>وضعیت</MudTh>
+            <MudTh><span class="visually-hidden">عملیات</span></MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd DataLabel="شماره">@PersianText.Digits(context.Number)</MudTd>
+            <MudTd DataLabel="متن و موضوع" Style="white-space: pre-wrap; overflow-wrap: anywhere">
+                @context.Text
+                @if (context.AgendaItemId is { } agendaId)
+                {
+                    <div>موضوع: @(_agendaNames.TryGetValue(agendaId, out var name) ? name : "موضوع دستور جلسه")</div>
+                }
+                @if (!string.IsNullOrWhiteSpace(context.RevocationReason))
+                {
+                    <div>دلیل ابطال: @context.RevocationReason</div>
+                }
+            </MudTd>
+            <MudTd DataLabel="وضعیت">@StatusText(context.Status)</MudTd>
+            <MudTd>
+                @if (CanWrite && context.Status == ResolutionStatus.Draft)
+                {
+                    <MudButton Size="Size.Small" Variant="Variant.Text" Disabled="_busy" OnClick="() => EditAsync(context)" aria-label="@($"ویرایش مصوبهٔ {context.Number}")">ویرایش</MudButton>
+                    <MudButton Size="Size.Small" Variant="Variant.Text" Disabled="_busy" OnClick="() => DecideAsync(context, true)" aria-label="@($"تصویب مصوبهٔ {context.Number}")">تصویب</MudButton>
+                    <MudButton Size="Size.Small" Variant="Variant.Text" Color="Color.Error" Disabled="_busy" OnClick="() => DecideAsync(context, false)" aria-label="@($"رد مصوبهٔ {context.Number}")">رد</MudButton>
+                }
+                @if (CanApprove && context.Status == ResolutionStatus.Adopted)
+                {
+                    <MudButton Size="Size.Small" Variant="Variant.Text" Color="Color.Error" Disabled="_busy" OnClick="() => BeginRevoke(context)" aria-label="@($"ابطال مصوبهٔ {context.Number}")">ابطال</MudButton>
+                }
+            </MudTd>
+        </RowTemplate>
+    </MudTable>
+    @if (_revokeItem is { } selected)
+    {
+        <MudPaper Class="pa-3 mt-3" Outlined="true" Elevation="0">
+            <MudText Typo="Typo.subtitle1">ابطال مصوبهٔ @PersianText.Digits(selected.Number)</MudText>
+            <MudTextField @bind-Value="_reason" Label="دلیل ابطال" Required="true" MaxLength="Resolution.MaxReasonLength" Lines="2" Disabled="_busy" />
+            @if (_reasonError is not null) { <MudText Color="Color.Error" role="alert">@_reasonError</MudText> }
+            <MudButton Variant="Variant.Filled" Color="Color.Error" Disabled="_busy" OnClick="RevokeAsync">ثبت ابطال</MudButton>
+            <MudButton Variant="Variant.Text" Disabled="_busy" OnClick="() => _revokeItem = null">انصراف</MudButton>
+        </MudPaper>
+    }
+</StatePanel>
+
+@code {
+    private static readonly DialogOptions Options = new() { MaxWidth = MaxWidth.Small, FullWidth = true, CloseOnEscapeKey = true };
+    private List<ResolutionDto> _items = [];
+    private Dictionary<Guid, string> _agendaNames = [];
+    private PanelState _panel = PanelState.Loading;
+    private string? _error;
+    private string? _actionError;
+    private string? _reasonError;
+    private string _reason = "";
+    private ResolutionDto? _revokeItem;
+    private bool _busy;
+
+    [Parameter] public Guid MeetingId { get; set; }
+
+    private bool CanWrite => Session.CurrentTenant?.Roles.Any(r => RolePermissions.Grants(r, Permissions.MinutesWrite)) == true;
+    private bool CanApprove => Session.CurrentTenant?.Roles.Any(r => RolePermissions.Grants(r, Permissions.MinutesApprove)) == true;
+
+    protected override Task OnParametersSetAsync() => LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        _panel = PanelState.Loading;
+        _items = [];
+        _revokeItem = null;
+        var result = await Api.ListAsync(MeetingId, CancellationToken.None);
+        if (!result.Succeeded || result.Value is null)
+        {
+            _error = result.Message ?? ApiResultReader.GenericFailure;
+            _panel = PanelState.Error;
+            return;
+        }
+        _items = result.Value;
+        _agendaNames = [];
+        if (_items.Any(r => r.AgendaItemId is not null) && await Agenda.GetAsync(MeetingId, CancellationToken.None) is { Succeeded: true, Value: { } agenda })
+        {
+            _agendaNames = agenda.Items.ToDictionary(i => i.Id, i => i.Title);
+        }
+        _panel = _items.Count == 0 ? PanelState.Empty : PanelState.Ready;
+    }
+
+    private async Task EditAsync(ResolutionDto? item)
+    {
+        if (_busy) return;
+        var parameters = new DialogParameters<ResolutionFormDialog> { { d => d.MeetingId, MeetingId }, { d => d.Item, item } };
+        var dialog = await Dialogs.ShowAsync<ResolutionFormDialog>(item is null ? "مصوبهٔ جدید" : "ویرایش مصوبه", parameters, Options);
+        if (await dialog.Result is { Canceled: false })
+        {
+            Snackbar.Add("مصوبه ذخیره شد.", Severity.Success);
+            await LoadAsync();
+        }
+    }
+
+    private async Task DecideAsync(ResolutionDto item, bool adopt)
+    {
+        if (_busy || await Dialogs.ShowMessageBoxAsync(new MessageBoxOptions
+            { Message = adopt ? $"مصوبهٔ {item.Number} تصویب شود؟" : $"مصوبهٔ {item.Number} رد شود؟", YesText = "بله", CancelText = "انصراف" }) != true) return;
+
+        await MutateAsync(() => adopt
+            ? Api.AdoptAsync(MeetingId, item.Id, item.LockVersion, CancellationToken.None)
+            : Api.RejectAsync(MeetingId, item.Id, item.LockVersion, CancellationToken.None));
+    }
+
+    private void BeginRevoke(ResolutionDto item)
+    {
+        _revokeItem = item;
+        _reason = "";
+        _reasonError = null;
+    }
+
+    private async Task RevokeAsync()
+    {
+        if (_revokeItem is not { } item || _busy) return;
+        _reasonError = string.IsNullOrWhiteSpace(_reason) ? "دلیل ابطال را وارد کنید." :
+            _reason.Trim().Length > Resolution.MaxReasonLength ? "دلیل بیش از حد طولانی است." : null;
+        if (_reasonError is not null) return;
+        await MutateAsync(() => Api.RevokeAsync(MeetingId, item.Id, item.LockVersion, _reason.Trim(), CancellationToken.None));
+    }
+
+    private async Task MutateAsync(Func<Task<ApiResult<ResolutionDto>>> action)
+    {
+        _busy = true;
+        _actionError = null;
+        try
+        {
+            var result = await action();
+            if (result.Succeeded && result.Value is { } updated)
+            {
+                var index = _items.FindIndex(r => r.Id == updated.Id);
+                if (index >= 0) _items[index] = updated;
+                _revokeItem = null;
+                Snackbar.Add("مصوبه به‌روزرسانی شد.", Severity.Success);
+            }
+            else
+            {
+                _actionError = result.Message ?? ApiResultReader.GenericFailure;
+                if (result.Error == ApiErrorKind.VersionConflict)
+                {
+                    var message = _actionError;
+                    await LoadAsync();
+                    _actionError = message;
+                }
+            }
+        }
+        finally { _busy = false; }
+    }
+
+    private static string StatusText(ResolutionStatus status) => status switch
+    {
+        ResolutionStatus.Draft => "پیش‌نویس",
+        ResolutionStatus.Adopted => "تصویب‌شده",
+        ResolutionStatus.Rejected => "ردشده",
+        ResolutionStatus.Revoked => "باطل‌شده",
+        _ => "نامشخص",
+    };
+}

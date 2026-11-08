@@ -1,0 +1,154 @@
+@page "/meetings/{MeetingId:guid}/attachments"
+@using KSC.MeetingManagement.Application.Attachments
+@using KSC.MeetingManagement.Domain.Identity
+@using KSC.MeetingManagement.Web.Services
+@implements IAsyncDisposable
+@inject AttachmentsApiClient Api
+@inject SessionState Session
+@inject IDialogService Dialogs
+@inject IJSRuntime JS
+
+<PageTitle>پیوست‌ها | مدیریت جلسات</PageTitle>
+<MudButton Href="@($"/meetings/{MeetingId}")" Variant="Variant.Text" Size="Size.Small">« بازگشت به جلسه</MudButton>
+<MudText Typo="Typo.h4" Class="ksc-page-title mb-3" tabindex="-1">پیوست‌های جلسه</MudText>
+
+@if (CanEdit)
+{
+    <MudPaper Class="pa-3 mb-3" Outlined="true" Elevation="0">
+        <label for="attachment-file">انتخاب فایل (حداکثر ۱۰ مگابایت: PDF، تصویر، سند آفیس یا متن)</label>
+        <InputFile id="attachment-file" OnChange="SelectFile" accept=".pdf,.png,.jpg,.jpeg,.docx,.xlsx,.pptx,.txt" disabled="@_busy" />
+        @if (_file is not null)
+        {
+            <MudText>@_file.Name</MudText>
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="UploadAsync" Disabled="_busy">بارگذاری</MudButton>
+        }
+    </MudPaper>
+}
+@if (_actionError is not null)
+{
+    <MudAlert Severity="Severity.Error" Variant="Variant.Outlined" role="alert" Class="mb-2">@_actionError</MudAlert>
+}
+<StatePanel State="_panel" ErrorText="@_error" OnRetry="LoadAsync" EmptyText="پیوستی برای این جلسه ثبت نشده است.">
+    <MudTable Items="_items" Dense="true" Hover="true" Elevation="0">
+        <HeaderContent>
+            <MudTh>نام فایل</MudTh>
+            <MudTh>اندازه</MudTh>
+            <MudTh><span class="visually-hidden">عملیات</span></MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd DataLabel="نام فایل" Style="overflow-wrap: anywhere">@context.FileName</MudTd>
+            <MudTd DataLabel="اندازه">@($"{context.SizeBytes / 1024.0:N1} KB")</MudTd>
+            <MudTd>
+                <MudButton Size="Size.Small" Variant="Variant.Text" Disabled="_busy" OnClick="() => DownloadAsync(context)" aria-label="@($"دریافت {context.FileName}")">دریافت</MudButton>
+                @if (CanEdit)
+                {
+                    <MudButton Size="Size.Small" Variant="Variant.Text" Color="Color.Error" Disabled="_busy" OnClick="() => DeleteAsync(context)" aria-label="@($"حذف {context.FileName}")">حذف</MudButton>
+                }
+            </MudTd>
+        </RowTemplate>
+    </MudTable>
+</StatePanel>
+
+@code {
+    private List<AttachmentDto> _items = [];
+    private PanelState _panel = PanelState.Loading;
+    private IBrowserFile? _file;
+    private string? _error;
+    private string? _actionError;
+    private bool _busy;
+    private IJSObjectReference? _module;
+
+    [Parameter] public Guid MeetingId { get; set; }
+
+    private bool CanEdit => Session.CurrentTenant?.Roles.Any(r => RolePermissions.Grants(r, Permissions.MeetingsEdit)) == true;
+
+    protected override Task OnParametersSetAsync() => LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        _panel = PanelState.Loading;
+        var result = await Api.ListAsync(MeetingId, CancellationToken.None);
+        if (!result.Succeeded || result.Value is null)
+        {
+            _error = result.Message ?? ApiResultReader.GenericFailure;
+            _panel = PanelState.Error;
+            return;
+        }
+        _items = result.Value;
+        _panel = _items.Count == 0 ? PanelState.Empty : PanelState.Ready;
+    }
+
+    private void SelectFile(InputFileChangeEventArgs args)
+    {
+        _file = args.File;
+        _actionError = _file.Size > AttachmentOptions.DefaultMaxBytes ? "حجم فایل نباید بیشتر از ۱۰ مگابایت باشد." : null;
+    }
+
+    private async Task UploadAsync()
+    {
+        if (!CanEdit || _busy || _file is null) return;
+        if (_file.Size > AttachmentOptions.DefaultMaxBytes)
+        {
+            _actionError = "حجم فایل نباید بیشتر از ۱۰ مگابایت باشد.";
+            return;
+        }
+        _busy = true;
+        _actionError = null;
+        try
+        {
+            var result = await Api.UploadAsync(MeetingId, _file, CancellationToken.None);
+            if (result.Succeeded)
+            {
+                _file = null;
+                await LoadAsync();
+            }
+            else _actionError = result.Message ?? ApiResultReader.GenericFailure;
+        }
+        finally { _busy = false; }
+    }
+
+    private async Task DownloadAsync(AttachmentDto item)
+    {
+        if (_busy) return;
+        _busy = true;
+        _actionError = null;
+        try
+        {
+            var result = await Api.DownloadAsync(MeetingId, item.Id, CancellationToken.None);
+            if (result.Succeeded && result.Value is { } file)
+            {
+                _module ??= await JS.InvokeAsync<IJSObjectReference>("import", "./attachments.js");
+                using var stream = new MemoryStream(file.Content);
+                using var reference = new DotNetStreamReference(stream);
+                await _module.InvokeVoidAsync("downloadFile", item.FileName, reference);
+            }
+            else _actionError = result.Message ?? ApiResultReader.GenericFailure;
+        }
+        catch (JSException) { _actionError = ApiResultReader.GenericFailure; }
+        finally { _busy = false; }
+    }
+
+    private async Task DeleteAsync(AttachmentDto item)
+    {
+        if (!CanEdit || _busy || await Dialogs.ShowMessageBoxAsync(new MessageBoxOptions
+            { Message = $"پیوست «{item.FileName}» حذف شود؟", YesText = "حذف", CancelText = "انصراف" }) != true) return;
+        _busy = true;
+        _actionError = null;
+        try
+        {
+            var result = await Api.DeleteAsync(MeetingId, item.Id, CancellationToken.None);
+            if (result.Succeeded) await LoadAsync();
+            else _actionError = result.Message ?? ApiResultReader.GenericFailure;
+        }
+        finally { _busy = false; }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_module is not null)
+        {
+            try { await _module.DisposeAsync(); }
+            catch (JSDisconnectedException) { /* Circuit already closed. */ }
+        }
+    }
+}

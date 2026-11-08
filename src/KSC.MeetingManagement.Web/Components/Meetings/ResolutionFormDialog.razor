@@ -1,0 +1,94 @@
+@using KSC.MeetingManagement.Application.Agenda
+@using KSC.MeetingManagement.Application.Resolutions
+@using KSC.MeetingManagement.Domain.Meetings
+@using KSC.MeetingManagement.Web.Services
+@inject ResolutionsApiClient Api
+@inject AgendaApiClient Agenda
+
+<MudDialog>
+    <DialogContent>
+        <MudStack Spacing="2">
+            <MudTextField @bind-Value="_text" Label="متن مصوبه" Lines="4" Required="true" MaxLength="Resolution.MaxTextLength" Disabled="_saving"
+                          Error="@(_validationError is not null)" ErrorText="@_validationError" />
+            @if (_agendaError is not null)
+            {
+                <MudAlert Severity="Severity.Warning" Variant="Variant.Outlined" role="alert">@_agendaError</MudAlert>
+            }
+            else
+            {
+                <MudSelect T="Guid?" @bind-Value="_agendaItemId" Label="موضوع دستور جلسه (اختیاری)" Clearable="true" Disabled="_saving">
+                    @foreach (var item in _agendaItems)
+                    {
+                        <MudSelectItem T="Guid?" Value="@((Guid?)item.Id)">@item.Title</MudSelectItem>
+                    }
+                </MudSelect>
+            }
+            @if (_serverError is not null)
+            {
+                <MudAlert Severity="Severity.Error" Variant="Variant.Outlined" role="alert">
+                    @_serverError
+                    @if (_conflict)
+                    {
+                        <MudText Typo="Typo.body2">پنجره را ببندید و فهرست را تازه کنید؛ تغییرات شما هنوز ذخیره نشده است.</MudText>
+                    }
+                </MudAlert>
+            }
+        </MudStack>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel" Disabled="_saving">انصراف</MudButton>
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="SaveAsync" Disabled="@(_saving || _conflict)">ذخیره</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    private string _text = "";
+    private Guid? _agendaItemId;
+    private List<AgendaItemDto> _agendaItems = [];
+    private string? _agendaError;
+    private string? _validationError;
+    private string? _serverError;
+    private bool _saving;
+    private bool _conflict;
+
+    [CascadingParameter] private IMudDialogInstance Dialog { get; set; } = default!;
+    [Parameter, EditorRequired] public Guid MeetingId { get; set; }
+    [Parameter] public ResolutionDto? Item { get; set; }
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (Item is { } item)
+        {
+            _text = item.Text;
+            _agendaItemId = item.AgendaItemId;
+        }
+        var result = await Agenda.GetAsync(MeetingId, CancellationToken.None);
+        if (result.Succeeded && result.Value is { } agenda) _agendaItems = agenda.Items.ToList();
+        else _agendaError = "فهرست موضوع‌ها بارگیری نشد؛ ارتباط با دستور جلسه قابل تغییر نیست.";
+    }
+
+    private async Task SaveAsync()
+    {
+        _validationError = string.IsNullOrWhiteSpace(_text) ? "متن مصوبه را وارد کنید." :
+            _text.Trim().Length > Resolution.MaxTextLength ? "متن مصوبه بیش از حد طولانی است." : null;
+        if (_validationError is not null) return;
+        _serverError = null;
+        _saving = true;
+        try
+        {
+            var result = Item is { } item
+                ? await Api.EditAsync(MeetingId, item.Id, item.LockVersion, _text.Trim(), _agendaItemId, CancellationToken.None)
+                : await Api.CreateAsync(MeetingId, _text.Trim(), _agendaItemId, CancellationToken.None);
+            if (result.Succeeded && result.Value is { } saved)
+            {
+                Dialog.Close(DialogResult.Ok(saved));
+                return;
+            }
+            _serverError = result.Message ?? ApiResultReader.GenericFailure;
+            _conflict = result.Error == ApiErrorKind.VersionConflict;
+        }
+        finally { _saving = false; }
+    }
+
+    private void Cancel() => Dialog.Cancel();
+}

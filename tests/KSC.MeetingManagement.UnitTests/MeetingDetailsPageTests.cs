@@ -27,6 +27,7 @@ public sealed class MeetingDetailsPageTests : BunitContext, IAsyncLifetime
         Services.AddScoped<ParticipantsApiClient>();
         Services.AddScoped<UsersApiClient>();
         Services.AddSingleton(TimeProvider.System);
+        Services.AddScoped<AgendaApiClient>();
     }
 
     public Task InitializeAsync() => Task.CompletedTask;
@@ -44,6 +45,12 @@ public sealed class MeetingDetailsPageTests : BunitContext, IAsyncLifetime
         {
             var body = request.Content is null ? string.Empty : await request.Content.ReadAsStringAsync(cancellationToken);
             var path = request.RequestUri!.AbsolutePath;
+            if (path.EndsWith("/agenda", StringComparison.Ordinal) && request.Method == HttpMethod.Get)
+            {
+                owner._requests.Add((request.Method, path, body));
+                return Json("""{"revision":0,"items":[]}""");
+            }
+
             if (path.Contains("/participants", StringComparison.Ordinal) || path.EndsWith("/users", StringComparison.Ordinal))
             {
                 // The participants panel is covered by ParticipantsPanelTests; here it only has to stay quiet.
