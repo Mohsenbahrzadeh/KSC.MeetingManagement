@@ -221,4 +221,5 @@ public sealed class MeetingService(
         var meetings = await repository.ListAsync(bounded, cancellationToken);
         return meetings.Select(MeetingDto.From).ToList();
     }
+
 }

@@ -48,8 +48,59 @@ public sealed class KscDbContext(DbContextOptions<KscDbContext> options, ITenant
 
     public DbSet<MeetingParticipant> Participants => Set<MeetingParticipant>();
 
+    public DbSet<SearchIndexChange> SearchIndexChanges => Set<SearchIndexChange>();
+
     // Evaluated per context instance. Guid.Empty (no tenant resolved) matches nothing.
     private Guid CurrentTenantId => tenant.Tenant?.Id ?? Guid.Empty;
+
+    public override int SaveChanges(bool acceptAllChangesOnSuccess)
+    {
+        QueueSearchChanges();
+        return base.SaveChanges(acceptAllChangesOnSuccess);
+    }
+
+    public override async Task<int> SaveChangesAsync(bool acceptAllChangesOnSuccess, CancellationToken cancellationToken = default)
+    {
+        QueueSearchChanges();
+        return await base.SaveChangesAsync(acceptAllChangesOnSuccess, cancellationToken);
+    }
+
+    private void QueueSearchChanges()
+    {
+        var pendingChanges = ChangeTracker.Entries()
+            .Where(entry => entry.State is EntityState.Added or EntityState.Modified or EntityState.Deleted)
+            .ToArray();
+        foreach (var entry in pendingChanges)
+        {
+            if (!IsSearchableEntity(entry.Entity)) continue;
+            var change = ToSearchChange(entry);
+            if (change.TenantId == Guid.Empty || change.MeetingId == Guid.Empty) continue;
+            SearchIndexChanges.Add(new SearchIndexChange { Id = Guid.NewGuid(), TenantId = change.TenantId, MeetingId = change.MeetingId });
+        }
+    }
+
+    private static bool IsSearchableEntity(object entity) => entity is Meeting or Domain.Meetings.Minutes or MinutesVersion or MeetingAttachment;
+
+    private (Guid TenantId, Guid MeetingId) ToSearchChange(Microsoft.EntityFrameworkCore.ChangeTracking.EntityEntry entry)
+    {
+        var tenantProperty = entry.Metadata.FindProperty("TenantId");
+        if (tenantProperty is null) return (Guid.Empty, Guid.Empty);
+        var tenantValue = entry.Property("TenantId");
+        var tenantId = (Guid)(tenantValue.CurrentValue ?? tenantValue.OriginalValue ?? Guid.Empty);
+        var meetingId = entry.Entity switch
+        {
+            Meeting meeting => meeting.Id,
+            Domain.Meetings.Minutes minutes => minutes.MeetingId,
+            MinutesVersion version => TryGetTrackedMinutes(version.MinutesId)?.MeetingId ?? Guid.Empty,
+            MeetingAttachment attachment => attachment.MeetingId,
+            _ => Guid.Empty,
+        };
+        return (tenantId, meetingId);
+    }
+
+    private Domain.Meetings.Minutes? TryGetTrackedMinutes(Guid minutesId) => ChangeTracker.Entries<Domain.Meetings.Minutes>()
+        .Select(entry => entry.Entity)
+        .FirstOrDefault(minutes => minutes.Id == minutesId);
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -377,6 +428,16 @@ public sealed class KscDbContext(DbContextOptions<KscDbContext> options, ITenant
             b.ToTable("meeting_number_counters");
             b.HasKey(c => new { c.TenantId, c.Year });
             b.Property(c => c.LastValue).IsConcurrencyToken();
+        });
+
+        modelBuilder.Entity<SearchIndexChange>(b =>
+        {
+            b.ToTable("search_index_changes");
+            b.HasKey(change => change.Id);
+            b.Property(change => change.TenantId).IsRequired();
+            b.Property(change => change.MeetingId).IsRequired();
+            b.HasIndex(change => new { change.TenantId, change.Id });
+            b.HasQueryFilter(change => change.TenantId == CurrentTenantId);
         });
 
         modelBuilder.Entity<MeetingParticipant>(b =>

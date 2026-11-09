@@ -50,6 +50,10 @@
 - پر شدن دیسک: حجم جدول‌ها (`audit_events`، `outbox_messages`، `chat_messages`، `presence_records`) را بسنجید؛ پاک‌سازی/آرشیو سیاست‌گذاری نشده (باز).
 - از دست رفتن داده: بخش بازیابی در `backup-restore.md`.
 
+## ۶الف. جست‌وجوی محتوایی
+- نتیجه‌ها قدیمی یا خالی‌اند: فضای آزاد و مجوز نوشتن `Search__IndexPath` را بررسی کنید، صف `search_index_changes` را برای tenant مربوط بشمارید، سپس با حساب `OrganizationManage`، `POST /api/v1/search/rebuild` را اجرا کنید. راهنمای backup، مسیر و محدودیت تک‌نمونه‌ای در `search-index.md` است.
+- در استقرار فعلی بیش از یک نمونهٔ فعال با مسیر مشترک Lucene اجرا نکنید؛ چندنمونه‌ای نیازمند توزیع صف/نمایه است.
+
 ## ۷. صف اعلان (Outbox)
 **علامت:** اعلان‌ها دیر می‌رسند یا نمی‌رسند.
 1. `select "Status", count(*) from outbox_messages group by 1;` — انبوه `Pending` = کانال کند/خراب؛ `Dead` = پس از چند تلاش رها شده (`LastError` علت)؛ `Skipped` = آدرسی برای عضو نبود.

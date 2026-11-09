@@ -17,6 +17,7 @@ using KSC.MeetingManagement.Application.Minutes;
 using KSC.MeetingManagement.Application.Resolutions;
 using KSC.MeetingManagement.Infrastructure.Storage;
 using KSC.MeetingManagement.Application.Participants;
+using KSC.MeetingManagement.Infrastructure.Search;
 
 namespace KSC.MeetingManagement.Infrastructure.Persistence;
 
@@ -80,9 +81,14 @@ public static class PersistenceExtensions
 
         var connectionString = configuration.GetConnectionString("Default");
         services.AddDbContext<KscDbContext>(o => o.UseNpgsql(connectionString));
+        services.TryAddSingleton<IMeetingContentIndex>(sp => new LuceneMeetingContentIndex(
+            configuration["Search:IndexPath"] ?? Path.Combine(AppContext.BaseDirectory, "App_Data", "lucene"),
+            sp.GetRequiredService<Microsoft.Extensions.Logging.ILogger<LuceneMeetingContentIndex>>()));
 
         services.AddScoped<IMeetingRepository, EfMeetingRepository>();
         services.AddScoped<MeetingService>();
+        services.AddScoped<IMeetingSearchRepository, EfMeetingSearchRepository>();
+        services.AddScoped<MeetingSearchService>();
         services.TryAddSingleton(TimeProvider.System);
         services.AddScoped<IParticipantRepository, EfParticipantRepository>();
         services.AddScoped<ParticipantService>();

@@ -12,5 +12,6 @@ public static class NavItems
         new("جلسات", "/meetings", MudBlazor.Icons.Material.Filled.Groups),
         new("کمیته‌ها", "/committees", MudBlazor.Icons.Material.Filled.AccountTree),
         new("کاربران", "/users", MudBlazor.Icons.Material.Filled.ManageAccounts),
+        new("جست‌وجو", "/search", MudBlazor.Icons.Material.Filled.Search),
     ];
 }
