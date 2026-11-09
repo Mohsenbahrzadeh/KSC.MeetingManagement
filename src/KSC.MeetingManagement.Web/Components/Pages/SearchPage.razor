@@ -1,0 +1,123 @@
+@page "/search"
+@using KSC.MeetingManagement.Application.Meetings
+@using KSC.MeetingManagement.Calendar
+@using KSC.MeetingManagement.Domain.Identity
+@using KSC.MeetingManagement.Web.Components.Common
+@using KSC.MeetingManagement.Web.Services
+@inject MeetingSearchApiClient Api
+@inject SessionState Session
+
+<PageTitle>جست‌وجوی محتوا | مدیریت جلسات</PageTitle>
+<MudText Typo="Typo.h4" Class="ksc-page-title mb-3" tabindex="-1">جست‌وجوی محتوا</MudText>
+@if (!CanSearch)
+{
+    <MudAlert Severity="Severity.Warning" role="alert">شما دسترسی مشاهدهٔ جلسات را ندارید.</MudAlert>
+}
+else
+{
+    <MudPaper Class="pa-3 mb-3" Outlined="true" Elevation="0">
+        <MudStack Row="true" AlignItems="AlignItems.Center" Wrap="Wrap.Wrap">
+            <MudTextField @bind-Value="_text" Label="عبارت جست‌وجو" Placeholder="متن صورت‌جلسهٔ مصوب یا نام و نوع پیوست" Immediate="true" MaxLength="MeetingSearchService.MaxQueryLength" OnKeyDown="OnKeyDownAsync" Class="flex-grow-1" />
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" Disabled="_loading" OnClick="SearchAsync">جست‌وجو</MudButton>
+        </MudStack>
+        @if (_validation is not null) { <MudText Color="Color.Error" role="alert">@_validation</MudText> }
+    </MudPaper>
+
+    <StatePanel State="_panel" ErrorText="@_error" OnRetry="SearchAsync" EmptyText="نتیجه‌ای پیدا نشد.">
+        <MudText Typo="Typo.body2" Class="mb-2">نتیجهٔ یافت‌شده: @PersianText.Digits(_total.ToString(System.Globalization.CultureInfo.InvariantCulture))</MudText>
+        <MudList T="string" Dense="true">
+            @foreach (var hit in _hits)
+            {
+                <MudListItem T="string">
+                    <MudStack Spacing="0">
+                        <MudLink Href="@($"/meetings/{hit.MeetingId}")">@hit.MeetingTitle</MudLink>
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">@(hit.MeetingNumber is null ? "" : $"جلسهٔ {PersianText.Digits(hit.MeetingNumber)} · ")@KindText(hit.Kind)@(hit.SourceLabel is null ? "" : $" · {hit.SourceLabel}")</MudText>
+                        <MudText Typo="Typo.body2">@hit.Snippet</MudText>
+                    </MudStack>
+                </MudListItem>
+            }
+        </MudList>
+        @if (_skip > 0 || _hasNext)
+        {
+            <MudStack Row="true" Justify="Justify.Center" Class="mt-2">
+                <MudButton Variant="Variant.Text" Disabled="@(_loading || _skip == 0)" OnClick="PreviousAsync">قبلی</MudButton>
+                <MudButton Variant="Variant.Text" Disabled="@(_loading || !_hasNext)" OnClick="NextAsync">بعدی</MudButton>
+            </MudStack>
+        }
+    </StatePanel>
+}
+
+@code {
+    private const int PageSize = 20;
+    private string _text = string.Empty;
+    private string? _validation;
+    private string? _error;
+    private List<MeetingSearchHit> _hits = [];
+    private PanelState _panel = PanelState.Empty;
+    private bool _loading;
+    private bool _hasNext;
+    private int _skip;
+    private long _total;
+    private bool CanSearch => Session.CurrentTenant?.Roles.Any(role => RolePermissions.Grants(role, Permissions.MeetingsView)) == true;
+
+    private Task OnKeyDownAsync(KeyboardEventArgs args) => args.Key == "Enter" ? SearchAsync() : Task.CompletedTask;
+
+    private async Task SearchAsync()
+    {
+        if (!CanSearch || _loading) return;
+        _text = (_text ?? string.Empty).Trim();
+        _validation = null;
+        if (_text.Length == 0)
+        {
+            _validation = "عبارت جست‌وجو را وارد کنید.";
+            return;
+        }
+        if (_text.Length > MeetingSearchService.MaxQueryLength)
+        {
+            _validation = $"عبارت جست‌وجو نباید بیشتر از {MeetingSearchService.MaxQueryLength} نویسه باشد.";
+            return;
+        }
+        _skip = 0;
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        _panel = PanelState.Loading;
+        try
+        {
+            var result = await Api.SearchAsync(_text, _skip, PageSize, CancellationToken.None);
+            if (!result.Succeeded || result.Value is null)
+            {
+                _error = result.Message ?? ApiResultReader.GenericFailure;
+                _panel = PanelState.Error;
+                return;
+            }
+            _hits = result.Value.Hits.ToList();
+            _total = result.Value.TotalCount;
+            _hasNext = _skip + _hits.Count < _total;
+            _panel = _hits.Count == 0 ? PanelState.Empty : PanelState.Ready;
+        }
+        finally { _loading = false; }
+    }
+
+    private async Task NextAsync()
+    {
+        if (_loading || !_hasNext) return;
+        _skip += PageSize;
+        await LoadAsync();
+    }
+
+    private async Task PreviousAsync()
+    {
+        if (_loading || _skip == 0) return;
+        _skip = Math.Max(0, _skip - PageSize);
+        await LoadAsync();
+    }
+
+    private static string KindText(string kind) => kind switch
+    {
+        "minutes" => "صورت‌جلسهٔ مصوب", "attachment" => "فرادادهٔ پیوست", _ => "محتوا",
+    };
+}

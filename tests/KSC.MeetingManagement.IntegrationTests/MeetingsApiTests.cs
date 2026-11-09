@@ -3,10 +3,12 @@ using System.Net.Http.Json;
 using KSC.MeetingManagement.Application.Meetings;
 using KSC.MeetingManagement.Domain.Identity;
 using KSC.MeetingManagement.Domain.Tenants;
+using KSC.MeetingManagement.Infrastructure.Persistence;
 using KSC.MeetingManagement.Infrastructure.Tenants;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace KSC.MeetingManagement.IntegrationTests;
@@ -24,7 +26,9 @@ public sealed class MeetingsApiTests : IClassFixture<WebApplicationFactory<Progr
     private readonly Guid _organizerA = Guid.NewGuid();
     private readonly Guid _organizerB = Guid.NewGuid();
     private readonly Guid _participantA = Guid.NewGuid();
+    private readonly Guid _adminA = Guid.NewGuid();
     private readonly HttpClient _client;
+    private readonly IServiceProvider _services;
 
     public MeetingsApiTests(WebApplicationFactory<Program> factory)
     {
@@ -37,6 +41,7 @@ public sealed class MeetingsApiTests : IClassFixture<WebApplicationFactory<Progr
                     .AddScheme<AuthenticationSchemeOptions, TestAuthHandler>(TestAuthHandler.Scheme, _ => { });
             });
         });
+        _services = app.Services;
 
         var tenants = app.Services.GetRequiredService<InMemoryTenantStore>();
         tenants.Add(_tenantA);
@@ -44,6 +49,7 @@ public sealed class MeetingsApiTests : IClassFixture<WebApplicationFactory<Progr
         var members = app.Services.GetRequiredService<InMemoryMembershipStore>();
         members.Add(new Membership(_tenantA.Id, _organizerA, [Roles.MeetingOrganizer]));
         members.Add(new Membership(_tenantA.Id, _participantA, [Roles.Participant]));
+        members.Add(new Membership(_tenantA.Id, _adminA, [Roles.TenantAdministrator]));
         members.Add(new Membership(_tenantB.Id, _organizerB, [Roles.MeetingOrganizer]));
 
         _client = app.CreateClient(new() { AllowAutoRedirect = false });
@@ -129,6 +135,39 @@ public sealed class MeetingsApiTests : IClassFixture<WebApplicationFactory<Progr
         var list = await (await Send(HttpMethod.Get, "/api/v1/meetings", _tenantB, _organizerB)).Content.ReadFromJsonAsync<List<MeetingDto>>(Json);
 
         Assert.DoesNotContain(list!, m => m.Id == created!.Id);
+    }
+
+    [Fact]
+    public async Task Search_requires_meetings_view_permission()
+    {
+        var allowed = await Send(HttpMethod.Get, "/api/v1/meetings/search?q=جلسه", _tenantA, _organizerA);
+        var denied = await Send(HttpMethod.Get, "/api/v1/meetings/search?q=جلسه", _tenantA, Guid.NewGuid());
+
+        Assert.Equal(HttpStatusCode.OK, allowed.StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, denied.StatusCode);
+    }
+
+    [Fact]
+    public async Task Meeting_changes_are_durably_queued_for_search_in_the_same_database()
+    {
+        var response = await Send(HttpMethod.Post, "/api/v1/meetings", _tenantA, _organizerA, NewMeeting());
+        var meeting = await response.Content.ReadFromJsonAsync<MeetingDto>(Json);
+        using var scope = _services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<KscDbContext>();
+
+        Assert.Equal(HttpStatusCode.Created, response.StatusCode);
+        Assert.True(await db.SearchIndexChanges.IgnoreQueryFilters()
+            .AnyAsync(change => change.TenantId == _tenantA.Id && change.MeetingId == meeting!.Id));
+    }
+
+    [Fact]
+    public async Task Rebuild_requires_organization_manage_permission_and_is_tenant_scoped()
+    {
+        var allowed = await Send(HttpMethod.Post, "/api/v1/search/rebuild", _tenantA, _adminA);
+        var denied = await Send(HttpMethod.Post, "/api/v1/search/rebuild", _tenantA, _participantA);
+
+        Assert.Equal(HttpStatusCode.OK, allowed.StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, denied.StatusCode);
     }
 
     [Fact]

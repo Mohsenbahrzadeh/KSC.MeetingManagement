@@ -39,7 +39,7 @@ public sealed record PostponeMeetingRequest(long ExpectedVersion);
 [ApiController]
 [Route("api/v1/meetings")]
 [RequiresTenant]
-public sealed class MeetingsController(MeetingService meetings, Application.Media.RoomControlService roomControl) : ControllerBase
+public sealed class MeetingsController(MeetingService meetings, MeetingSearchService search, Application.Media.RoomControlService roomControl) : ControllerBase
 {
     [Audited("meeting.create", "meeting", "id")]
     [HttpPost]
@@ -179,6 +179,25 @@ public sealed class MeetingsController(MeetingService meetings, Application.Medi
             return Ok(await meetings.ListAsync(new MeetingQuery(from, to, status, skip, take), cancellationToken));
         }
         catch (MeetingDomainException ex)
+        {
+            return Problem(ex.Message, statusCode: StatusCodes.Status422UnprocessableEntity);
+        }
+    }
+
+    /// <summary>Searches current-tenant meeting content using Lucene.NET; all results are tenant-filtered before matching.</summary>
+    [HttpGet("search")]
+    [HasPermission(Permissions.MeetingsView)]
+    public async Task<IActionResult> Search(string q, int skip = 0, int take = 20, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            var maySeeAll = (await HttpContext.RequestServices.GetRequiredService<Microsoft.AspNetCore.Authorization.IAuthorizationService>()
+                // Meeting organizers also hold MeetingsEdit; only tenant administrators/owners may bypass
+                // the per-meeting visibility filter.
+                .AuthorizeAsync(User, null, HasPermissionAttribute.PolicyPrefix + Permissions.OrganizationManage)).Succeeded;
+            return Ok(await search.SearchAsync(new MeetingSearchQuery(q, skip, take, maySeeAll), cancellationToken));
+        }
+        catch (ArgumentException ex)
         {
             return Problem(ex.Message, statusCode: StatusCodes.Status422UnprocessableEntity);
         }

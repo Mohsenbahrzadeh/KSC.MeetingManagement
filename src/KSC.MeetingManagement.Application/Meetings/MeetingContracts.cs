@@ -19,6 +19,41 @@ public sealed record MeetingQuery(
     int Skip,
     int Take);
 
+/// <summary>A searchable record within the current tenant and caller's visibility scope.</summary>
+public sealed record MeetingSearchDocument(
+    Guid TenantId,
+    Guid MeetingId,
+    string MeetingTitle,
+    string? MeetingNumber,
+    string? Content,
+    string Kind,
+    Guid? SourceId,
+    string? SourceLabel,
+    DateTimeOffset UpdatedAtUtc);
+
+public sealed record MeetingSearchQuery(string Text, int Skip, int Take, bool MaySeeAllMeetings = false);
+
+public sealed record MeetingSearchHit(
+    Guid MeetingId,
+    string MeetingTitle,
+    string? MeetingNumber,
+    string Kind,
+    Guid? SourceId,
+    string? SourceLabel,
+    string Snippet,
+    DateTimeOffset UpdatedAtUtc);
+
+public sealed record MeetingSearchResult(long TotalCount, IReadOnlyList<MeetingSearchHit> Hits);
+
+/// <summary>Data-source port for full-text search; implementations must restrict reads to the current tenant.</summary>
+public interface IMeetingSearchRepository
+{
+    Task<IReadOnlyList<MeetingSearchDocument>> SearchDocumentsAsync(string text, IReadOnlyCollection<Guid>? meetingIds, int take, CancellationToken cancellationToken);
+    Task<IReadOnlySet<Guid>> GetVisibleMeetingIdsAsync(Guid userId, bool maySeeAll, CancellationToken cancellationToken);
+    Task<IReadOnlyList<(Guid ChangeId, Guid MeetingId)>> GetPendingChangesAsync(int take, CancellationToken cancellationToken);
+    Task CompleteChangesAsync(IReadOnlyCollection<Guid> changeIds, CancellationToken cancellationToken);
+}
+
 public sealed record MeetingDto(
     Guid Id,
     string Title,

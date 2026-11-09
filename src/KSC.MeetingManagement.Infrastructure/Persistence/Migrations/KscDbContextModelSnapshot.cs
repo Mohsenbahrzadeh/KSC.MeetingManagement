@@ -948,6 +948,25 @@ namespace KSC.MeetingManagement.Infrastructure.Persistence.Migrations
                     b.ToTable("memberships", (string)null);
                 });
 
+            modelBuilder.Entity("KSC.MeetingManagement.Infrastructure.Persistence.SearchIndexChange", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("MeetingId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId", "Id");
+
+                    b.ToTable("search_index_changes", (string)null);
+                });
+
             modelBuilder.Entity("KSC.MeetingManagement.Domain.Meetings.CommitteeMember", b =>
                 {
                     b.HasOne("KSC.MeetingManagement.Domain.Meetings.Committee", null)

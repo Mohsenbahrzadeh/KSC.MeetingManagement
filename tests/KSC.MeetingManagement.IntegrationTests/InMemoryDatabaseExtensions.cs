@@ -1,6 +1,8 @@
 using KSC.MeetingManagement.Infrastructure.Persistence;
+using KSC.MeetingManagement.Application.Meetings;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Hosting;
 using Npgsql;
 
@@ -28,6 +30,9 @@ internal static class InMemoryDatabaseExtensions
         {
             services.Remove(d);
         }
+
+        services.RemoveAll<IMeetingContentIndex>();
+        services.AddSingleton<IMeetingContentIndex, InMemoryMeetingContentIndex>();
 
         var pg = Environment.GetEnvironmentVariable(PostgresEnvVar);
         if (string.IsNullOrWhiteSpace(pg))
