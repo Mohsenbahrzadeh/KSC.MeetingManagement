@@ -20,7 +20,7 @@
 | LiveKit و coturn | فایل‌های استقرار و چک‌لیست در `deploy/media/` و `docs/operations/media-acceptance.md` | اجرا نشده؛ تصویرهای Docker هنوز pin نشده‌اند، دامنه/TLS/فایروال/Relay واقعی موجود یا تأییدشده نیست |
 | کلاینت رسانه | `livekit-client` نسخهٔ 2.23.0 (Apache-2.0) به‌صورت محلی باندل شده؛ بارگذاری ماژول زیر CSP و مسیرهای خطا با Chromium و stub بررسی شده‌اند | دوربین/میکروفون واقعی، صدای/تصویر دوطرفه، اشتراک صفحه و reconnect واقعی انجام نشده |
 | مرورگر و موبایل | ماتریس `docs/testing/rtl-mobile-matrix.md` شامل Chromium داخلی و چند اندازهٔ viewport است | Safari، Firefox، Chrome Android، Safari iOS، صفحه‌خوان و دستگاه واقعی پوشش داده نشده‌اند |
-| کارایی و ظرفیت | اهداف اولیهٔ ADR-0005: ۱۰–۲۵ نفر در هر اتاق و p95 فهرست کمتر از 500ms | هیچ اندازه‌گیری p95، مصرف CPU/RAM/شبکه یا ظرفیت هم‌زمان انجام نشده؛ هدف‌ها هنوز تأییدشده نیستند |
+| کارایی و ظرفیت | اهداف اولیهٔ ADR-0005: ۱۰–۲۵ نفر در هر اتاق و p95 فهرست کمتر از 500ms؛ روش و نمونه‌بردار ثبت منابع در `capacity-test.md` آماده است | هیچ اندازه‌گیری p95، مصرف CPU/RAM/شبکه یا ظرفیت هم‌زمان انجام نشده؛ هدف‌ها هنوز تأییدشده نیستند |
 | مشاهده‌پذیری | Health، متریک و Runbook پیاده و بخشی در تست‌ها بررسی شده‌اند؛ راهنمای Prometheus/Grafana موجود است | scrape، هشدار و import داشبورد روی سرویس واقعی آزمایش نشده؛ gauge وضعیت LiveKit/TURN و probe bounded صرفاً health/listener را نشان می‌دهند و آزمون رسانه یا TURN relay واقعی نیستند |
 | جست‌وجو و داده | جست‌وجوی Lucene tenant-scoped، فیلتر مجوز، صف پایدار و rebuild؛ CI و تست‌های موتور سبز | index مشتق‌شده است؛ استقرار فعلی برای مسیر مشترک Lucene تک‌نمونه‌ای است؛ backup/restore باید DB و `Storage:Root` را با هم حفظ کند |
 
@@ -51,3 +51,4 @@
 - [Backup و Restore](backup-restore.md)
 - [مانیتورینگ](monitoring.md)
 - [ماتریس RTL و موبایل](../testing/rtl-mobile-matrix.md)
+- [روش آزمون ظرفیت رسانه (TASK-067)](capacity-test.md)

@@ -29,4 +29,4 @@
 - `LIVEKIT_API_SECRET` و `TURN_SECRET` فقط در `.env` سرور و متغیر محیطی API.
 
 ## موارد ناتمام
-نسخهٔ تصویرها، مجوز، تنظیم Proxy/TLS برای LiveKit، چرخش گواهی TURN، افزودن سلامت LiveKit به `/health/ready`، آزمون ظرفیت (TASK-067) و آزمون TURN (TASK-068).
+نسخهٔ تصویرها، مجوز، تنظیم Proxy/TLS برای LiveKit، چرخش گواهی TURN و آزمون واقعی ظرفیت/TURN (TASK-067/068) باید روی میزبان استقرار انجام شود؛ روش ظرفیت در `docs/operations/capacity-test.md` است.
