@@ -1,8 +1,10 @@
 using System.Net.Http.Headers;
 using System.Security.Cryptography;
+using System.Text;
 using Microsoft.AspNetCore.Components.Server.Circuits;
 using Microsoft.AspNetCore.Components.Server.ProtectedBrowserStorage;
 using Microsoft.JSInterop;
+using Microsoft.AspNetCore.Routing;
 
 namespace KSC.MeetingManagement.Web.Services;
 
@@ -36,6 +38,69 @@ public sealed class ServicesAccessorCircuitHandler(IServiceProvider services, Ci
                 accessor.Services = null;
             }
         };
+}
+
+/// <summary>Process-local active Blazor circuit count. Prometheus scrapes the Web process separately from the API.</summary>
+public sealed class CircuitMetrics
+{
+    private int _activeCircuits;
+
+    public int ActiveCircuits => Math.Max(0, Volatile.Read(ref _activeCircuits));
+
+    public void CircuitOpened() => Interlocked.Increment(ref _activeCircuits);
+
+    public void CircuitClosed()
+    {
+        while (true)
+        {
+            var current = Volatile.Read(ref _activeCircuits);
+            if (current == 0 || Interlocked.CompareExchange(ref _activeCircuits, current - 1, current) == current) return;
+        }
+    }
+}
+
+public sealed class CircuitMetricsHandler(CircuitMetrics metrics) : CircuitHandler
+{
+    public void CircuitOpened(Circuit circuit) => metrics.CircuitOpened();
+
+    public void CircuitClosed(Circuit circuit) => metrics.CircuitClosed();
+
+    public override Task OnCircuitOpenedAsync(Circuit circuit, CancellationToken cancellationToken)
+    {
+        CircuitOpened(circuit);
+        return Task.CompletedTask;
+    }
+
+    public override Task OnCircuitClosedAsync(Circuit circuit, CancellationToken cancellationToken)
+    {
+        CircuitClosed(circuit);
+        return Task.CompletedTask;
+    }
+}
+
+public static class WebMetricsEndpoint
+{
+    public static IEndpointRouteBuilder MapKscWebMetrics(this IEndpointRouteBuilder endpoints, IConfiguration configuration)
+    {
+        var token = configuration["Metrics:Token"];
+        if (string.IsNullOrWhiteSpace(token) || token.Length < 16) return endpoints;
+
+        var expected = SHA256.HashData(Encoding.UTF8.GetBytes(token));
+        endpoints.MapGet("/metrics", (HttpContext context, CircuitMetrics circuits) =>
+        {
+            var header = context.Request.Headers.Authorization.ToString();
+            var supplied = header.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase)
+                ? SHA256.HashData(Encoding.UTF8.GetBytes(header[7..].Trim()))
+                : SHA256.HashData([]);
+            if (!CryptographicOperations.FixedTimeEquals(supplied, expected)) return Results.Unauthorized();
+
+            return Results.Text(
+                "# HELP ksc_blazor_active_circuits Active Blazor Server circuits in this process.\n# TYPE ksc_blazor_active_circuits gauge\n"
+                + $"ksc_blazor_active_circuits {circuits.ActiveCircuits}\n",
+                "text/plain; version=0.0.4; charset=utf-8");
+        }).ExcludeFromDescription();
+        return endpoints;
+    }
 }
 
 /// <summary>Adds the access token and chosen organisation of the signed-in user to every API request.</summary>

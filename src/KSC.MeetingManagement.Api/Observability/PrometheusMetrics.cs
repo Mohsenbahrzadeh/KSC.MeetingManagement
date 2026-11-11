@@ -16,6 +16,7 @@ public sealed class MetricsCollector : IDisposable
     private static readonly HashSet<string> Meters = new(StringComparer.Ordinal)
     {
         KscTelemetry.MeterName,
+        HealthStatusMetrics.MeterName,
         "System.Runtime",
         "Microsoft.AspNetCore.Hosting",
         "Microsoft.AspNetCore.Server.Kestrel",

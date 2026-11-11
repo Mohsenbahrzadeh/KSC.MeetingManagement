@@ -13,7 +13,9 @@ builder.Services.AddMudServices();
 // REST API used by the pages. Requests carry the signed-in user's token and chosen organisation (ApiAuthHandler);
 // the auth client has no handler because its calls create the session.
 builder.Services.AddSingleton<CircuitServicesAccessor>();
+builder.Services.AddSingleton<CircuitMetrics>();
 builder.Services.AddScoped<CircuitHandler, ServicesAccessorCircuitHandler>();
+builder.Services.AddScoped<CircuitHandler, CircuitMetricsHandler>();
 builder.Services.AddTransient<ApiAuthHandler>();
 static void ConfigureApi(IServiceProvider sp, HttpClient client) =>
     client.BaseAddress = new Uri(sp.GetRequiredService<IConfiguration>()["Api:BaseUrl"] ?? "http://localhost:5000/");
@@ -56,6 +58,7 @@ app.UseAntiforgery();
 app.MapStaticAssets();
 app.MapRazorComponents<App>()
     .AddInteractiveServerRenderMode();
+app.MapKscWebMetrics(app.Configuration);
 
 app.Run();
 
