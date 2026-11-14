@@ -132,4 +132,40 @@ public sealed class RoomTests : BunitContext, IAsyncLifetime
         cut.WaitForAssertion(() => Assert.Contains("برقرار نشد", cut.Find("[role=status]").TextContent, StringComparison.Ordinal));
         Assert.Empty(cut.FindAll("[role=toolbar]"));
     }
+
+    [Fact]
+    public void A_final_disconnect_can_rejoin_with_a_fresh_room_token()
+    {
+        var module = SetupModule();
+        var cut = Render<Room>(p => p.Add(c => c.MeetingId, MeetingId));
+        cut.WaitForAssertion(() => Assert.NotEmpty(cut.FindAll("video.ksc-preview")));
+
+        cut.FindAll("button").First(b => b.TextContent.Contains("ورود به جلسه", StringComparison.Ordinal)).Click();
+        cut.WaitForAssertion(() => Assert.NotEmpty(cut.FindAll("[role=toolbar]")));
+
+        cut.InvokeAsync(() => cut.Instance.OnRoomState("disconnected"));
+
+        cut.WaitForAssertion(() => Assert.Contains(cut.FindAll("button"), b => b.TextContent.Contains("اتصال دوباره", StringComparison.Ordinal)));
+        cut.FindAll("button").First(b => b.TextContent.Contains("اتصال دوباره", StringComparison.Ordinal)).Click();
+
+        cut.WaitForAssertion(() => Assert.NotEmpty(cut.FindAll("[role=toolbar]")));
+        Assert.Equal(2, _joinCalls);
+        Assert.Equal(2, module.Invocations.Count(i => i.Identifier == "connect"));
+        Assert.DoesNotContain(cut.FindAll("button"), b => b.TextContent.Contains("اتصال دوباره", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void Leaving_intentionally_does_not_offer_reconnect()
+    {
+        SetupModule();
+        var cut = Render<Room>(p => p.Add(c => c.MeetingId, MeetingId));
+        cut.WaitForAssertion(() => Assert.NotEmpty(cut.FindAll("video.ksc-preview")));
+
+        cut.FindAll("button").First(b => b.TextContent.Contains("ورود به جلسه", StringComparison.Ordinal)).Click();
+        cut.WaitForAssertion(() => Assert.NotEmpty(cut.FindAll("[role=toolbar]")));
+        cut.FindAll("button").First(b => b.TextContent.Contains("خروج", StringComparison.Ordinal)).Click();
+
+        cut.WaitForAssertion(() => Assert.Contains("از جلسه خارج شدید", cut.Find("[role=status]").TextContent, StringComparison.Ordinal));
+        Assert.DoesNotContain(cut.FindAll("button"), b => b.TextContent.Contains("اتصال دوباره", StringComparison.Ordinal));
+    }
 }
