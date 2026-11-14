@@ -59,6 +59,10 @@
 @if (_phase == Phase.Ended)
 {
     <MudAlert Severity="Severity.Info" role="status">@(_message ?? "از جلسه خارج شدید.")</MudAlert>
+    @if (_canReconnect)
+    {
+        <MudButton Class="mt-3" Variant="Variant.Filled" Color="Color.Primary" OnClick="ReconnectAsync" StartIcon="@Icons.Material.Filled.Refresh">اتصال دوباره</MudButton>
+    }
     <MudButton Class="mt-3" Variant="Variant.Outlined" OnClick="BackToLobby">بازگشت به ورود</MudButton>
 }
 
@@ -79,6 +83,7 @@
     private bool _sharing;
     private bool _disposed;
     private bool _restartPreview;
+    private bool _canReconnect;
 
     [Parameter]
     public Guid MeetingId { get; set; }
@@ -142,6 +147,7 @@
             return;
         }
 
+        _canReconnect = false;
         _phase = Phase.Joining;
         _message = null;
         JoinResult result;
@@ -183,7 +189,10 @@
             _phase = Phase.Lobby;
             _message = "اتصال به اتاق برقرار نشد. اینترنت خود را بررسی کنید و دوباره تلاش کنید.";
             _restartPreview = true;
+            return;
         }
+
+        _canReconnect = false;
     }
 
     private async Task SetMicAsync(bool on)
@@ -215,17 +224,32 @@
 
     private async Task LeaveAsync()
     {
+        _canReconnect = false;
+        _phase = Phase.Ended;
+        _message = "از جلسه خارج شدید.";
         if (_module is not null)
         {
             await _module.InvokeVoidAsync("disconnect");
         }
 
-        _phase = Phase.Ended;
         _sharing = false;
+    }
+
+    /// <summary>Requests a fresh, short-lived room token instead of reusing the token from the failed connection.</summary>
+    private async Task ReconnectAsync()
+    {
+        if (!_canReconnect || _phase != Phase.Ended)
+        {
+            return;
+        }
+
+        _canReconnect = false;
+        await JoinAsync();
     }
 
     private void BackToLobby()
     {
+        _canReconnect = false;
         _phase = Phase.Lobby;
         _message = null;
         _restartPreview = true;
@@ -239,6 +263,7 @@
         {
             _phase = Phase.Ended;
             _message = "ارتباط شما با جلسه قطع شد.";
+            _canReconnect = true;
         }
 
         StateHasChanged();
