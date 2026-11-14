@@ -38,7 +38,15 @@
     @if (_phase == Phase.InRoom)
     {
         <div class="ksc-room-bar" role="toolbar" aria-label="کنترل جلسه">
-            <MudText Typo="Typo.body2">@_participants نفر در اتاق</MudText>
+            <div class="ksc-room-participants" role="region" aria-label="شرکت‌کنندگان جلسه">
+                <MudText Typo="Typo.body2">@_participants.Count نفر در اتاق</MudText>
+                <ul>
+                    @foreach (var participant in _participants)
+                    {
+                        <li @key="participant.Identity">@participant.Name @if (participant.IsLocal) { <span>(شما)</span> }</li>
+                    }
+                </ul>
+            </div>
             @if (_state == "reconnecting")
             {
                 <MudChip T="string" Color="Color.Warning" Size="Size.Small">در حال اتصال مجدد…</MudChip>
@@ -67,6 +75,8 @@
 }
 
 @code {
+    public sealed record RoomParticipant(string Identity, string Name, bool IsLocal);
+
     private enum Phase { Lobby, Joining, Waiting, InRoom, Ended }
 
     private IJSObjectReference? _module;
@@ -77,7 +87,7 @@
     private string? _message;
     private string? _previewProblem;
     private string _state = "connected";
-    private int _participants;
+    private IReadOnlyList<RoomParticipant> _participants = [];
     private bool _mic = true;
     private bool _camera = true;
     private bool _sharing;
@@ -270,9 +280,9 @@
     });
 
     [JSInvokable]
-    public Task OnParticipantCount(int count) => InvokeAsync(() =>
+    public Task OnParticipants(RoomParticipant[] participants) => InvokeAsync(() =>
     {
-        _participants = count;
+        _participants = participants;
         StateHasChanged();
     });
 

@@ -117,7 +117,20 @@ function state(value) {
 }
 
 function report() {
-    if (dotnet && room) dotnet.invokeMethodAsync("OnParticipantCount", room.remoteParticipants.size + 1);
+    if (!dotnet || !room) return;
+    const participants = [
+        {
+            identity: room.localParticipant.identity,
+            name: room.localParticipant.name || room.localParticipant.identity,
+            isLocal: true
+        },
+        ...Array.from(room.remoteParticipants.values(), participant => ({
+            identity: participant.identity,
+            name: participant.name || participant.identity,
+            isLocal: false
+        }))
+    ];
+    dotnet.invokeMethodAsync("OnParticipants", participants);
 }
 
 function addTile(track, participant, local = false) {
