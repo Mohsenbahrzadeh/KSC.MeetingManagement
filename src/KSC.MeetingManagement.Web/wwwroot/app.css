@@ -115,6 +115,8 @@ h1:focus { outline: none; }
 .ksc-preview { inline-size: 100%; aspect-ratio: 16 / 9; background: #0f172a; border-radius: var(--ksc-radius-sm); object-fit: cover; transform: scaleX(-1); }
 .ksc-room-toggles { display: flex; gap: .5rem; justify-content: center; margin-block: .75rem; }
 .ksc-room-bar { display: flex; align-items: center; gap: .5rem; flex-wrap: wrap; padding: .5rem .75rem; margin-block-end: 1rem; border-radius: var(--ksc-radius); background: var(--mud-palette-surface); box-shadow: var(--ksc-shadow); }
+.ksc-room-participants { display: flex; align-items: baseline; flex-wrap: wrap; gap: .25rem .75rem; }
+.ksc-room-participants ul { display: flex; flex-wrap: wrap; gap: .25rem .75rem; margin: 0; padding: 0; list-style: none; font-size: .875rem; }
 .ksc-room-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr)); gap: .75rem; }
 .ksc-tile-video { position: relative; margin: 0; border-radius: var(--ksc-radius-sm); overflow: hidden; background: #0f172a; aspect-ratio: 16 / 9; }
 .ksc-tile-video video { inline-size: 100%; block-size: 100%; object-fit: contain; }

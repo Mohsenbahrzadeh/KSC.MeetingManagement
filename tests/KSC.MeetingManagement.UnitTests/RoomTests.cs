@@ -168,4 +168,28 @@ public sealed class RoomTests : BunitContext, IAsyncLifetime
         cut.WaitForAssertion(() => Assert.Contains("از جلسه خارج شدید", cut.Find("[role=status]").TextContent, StringComparison.Ordinal));
         Assert.DoesNotContain(cut.FindAll("button"), b => b.TextContent.Contains("اتصال دوباره", StringComparison.Ordinal));
     }
+
+    [Fact]
+    public void The_participant_roster_shows_local_and_remote_names()
+    {
+        SetupModule();
+        var cut = Render<Room>(p => p.Add(c => c.MeetingId, MeetingId));
+        cut.WaitForAssertion(() => Assert.NotEmpty(cut.FindAll("video.ksc-preview")));
+        cut.FindAll("button").First(b => b.TextContent.Contains("ورود به جلسه", StringComparison.Ordinal)).Click();
+        cut.WaitForAssertion(() => Assert.NotEmpty(cut.FindAll("[role=toolbar]")));
+
+        cut.InvokeAsync(() => cut.Instance.OnParticipants(
+        [
+            new Room.RoomParticipant("local-user", "سارا", true),
+            new Room.RoomParticipant("remote-user", "رضا", false)
+        ]));
+
+        cut.WaitForAssertion(() =>
+        {
+            var roster = cut.Find("[aria-label='شرکت‌کنندگان جلسه']");
+            Assert.Contains("سارا", roster.TextContent, StringComparison.Ordinal);
+            Assert.Contains("رضا", roster.TextContent, StringComparison.Ordinal);
+            Assert.Contains("2 نفر در اتاق", roster.TextContent, StringComparison.Ordinal);
+        });
+    }
 }
