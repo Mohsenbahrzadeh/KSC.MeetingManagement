@@ -18,7 +18,7 @@
             <MudAlert Severity="Severity.Warning" Class="my-3" role="alert">@_previewProblem</MudAlert>
         }
         <div class="ksc-room-toggles">
-            <MudToggleIconButton @bind-Toggled="_mic" Icon="@Icons.Material.Filled.MicOff" ToggledIcon="@Icons.Material.Filled.Mic"
+            <MudToggleIconButton Toggled="_mic" ToggledChanged="OnMicPreviewChanged" Icon="@Icons.Material.Filled.MicOff" ToggledIcon="@Icons.Material.Filled.Mic"
                                  Color="Color.Default" ToggledColor="Color.Primary" aria-label="میکروفون" Disabled="_phase != Phase.Lobby" />
             <MudToggleIconButton Toggled="_camera" ToggledChanged="OnCameraPreviewChanged" Icon="@Icons.Material.Filled.VideocamOff" ToggledIcon="@Icons.Material.Filled.Videocam"
                                  Color="Color.Default" ToggledColor="Color.Primary" aria-label="دوربین" Disabled="_phase != Phase.Lobby" />
@@ -130,6 +130,12 @@
         await RestartPreviewAsync();
     }
 
+    private async Task OnMicPreviewChanged(bool value)
+    {
+        _mic = value;
+        await RestartPreviewAsync();
+    }
+
     /// <summary>Shows the self view and explains, in plain words, why a device could not be opened.</summary>
     private async Task RestartPreviewAsync()
     {
@@ -138,7 +144,15 @@
             return;
         }
 
-        var code = await _module.InvokeAsync<string>("startPreview", _preview, _camera, true);
+        if (!_camera && !_mic)
+        {
+            await _module.InvokeVoidAsync("stopPreview");
+            _previewProblem = null;
+            StateHasChanged();
+            return;
+        }
+
+        var code = await _module.InvokeAsync<string>("startPreview", _preview, _camera, _mic);
         _previewProblem = code switch
         {
             "ok" => null,
