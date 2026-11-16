@@ -49,7 +49,10 @@ export async function connect(serverUrl, token, iceServers, container, reference
             addTile(publication.track, room.localParticipant, true);
         }
     });
-    room.on(RoomEvent.LocalTrackUnpublished, (publication) => removeTile(publication.trackSid));
+    room.on(RoomEvent.LocalTrackUnpublished, (publication) => {
+        removeTile(publication.trackSid);
+        if (publication.source === Track.Source.ScreenShare) screenShareState(false);
+    });
     room.on(RoomEvent.ParticipantConnected, report);
     room.on(RoomEvent.ParticipantDisconnected, report);
     room.on(RoomEvent.Reconnecting, () => state("reconnecting"));
@@ -94,6 +97,7 @@ export async function setScreenShare(on) {
     } catch {
         return false;
     }
+    screenShareState(on);
     return on;
 }
 
@@ -114,6 +118,10 @@ export function connectionState() {
 
 function state(value) {
     if (dotnet) dotnet.invokeMethodAsync("OnRoomState", value);
+}
+
+function screenShareState(on) {
+    if (dotnet) dotnet.invokeMethodAsync("OnScreenShare", on);
 }
 
 function report() {
