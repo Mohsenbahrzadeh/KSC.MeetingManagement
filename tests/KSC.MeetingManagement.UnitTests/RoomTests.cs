@@ -192,4 +192,46 @@ public sealed class RoomTests : BunitContext, IAsyncLifetime
             Assert.Contains("2 نفر در اتاق", roster.TextContent, StringComparison.Ordinal);
         });
     }
+
+    [Fact]
+    public void Preview_requests_only_the_devices_enabled_by_the_user()
+    {
+        var module = SetupModule();
+        var cut = Render<Room>(p => p.Add(c => c.MeetingId, MeetingId));
+        cut.WaitForAssertion(() => Assert.Contains(module.Invocations, i => i.Identifier == "startPreview"));
+        Assert.Equal((true, true), LastPreviewRequest(module));
+
+        cut.FindAll("button").First(b => b.GetAttribute("aria-label") == "میکروفون").Click();
+        cut.WaitForAssertion(() => Assert.Equal((true, false), LastPreviewRequest(module)));
+
+        cut.FindAll("button").First(b => b.GetAttribute("aria-label") == "دوربین").Click();
+        cut.WaitForAssertion(() => Assert.Contains(module.Invocations, i => i.Identifier == "stopPreview"));
+        Assert.Equal((true, false), LastPreviewRequest(module));
+    }
+
+    [Fact]
+    public void Denying_preview_permission_does_not_block_joining_without_devices()
+    {
+        var module = SetupModule(previewResult: "NotAllowedError");
+        var cut = Render<Room>(p => p.Add(c => c.MeetingId, MeetingId));
+        cut.WaitForAssertion(() => Assert.NotEmpty(cut.FindAll("video.ksc-preview")));
+
+        cut.FindAll("button").First(b => b.GetAttribute("aria-label") == "میکروفون").Click();
+        cut.FindAll("button").First(b => b.GetAttribute("aria-label") == "دوربین").Click();
+
+        cut.WaitForAssertion(() => Assert.Empty(cut.FindAll("[role=alert]")));
+        var join = cut.FindAll("button").First(b => b.TextContent.Contains("ورود به جلسه", StringComparison.Ordinal));
+        Assert.False(join.HasAttribute("disabled"));
+        join.Click();
+        cut.WaitForAssertion(() => Assert.Contains(module.Invocations, i => i.Identifier == "connect"));
+        var connect = module.Invocations.Last(i => i.Identifier == "connect");
+        Assert.Equal(false, connect.Arguments[5]);
+        Assert.Equal(false, connect.Arguments[6]);
+    }
+
+    private static (bool Video, bool Audio) LastPreviewRequest(BunitJSModuleInterop module)
+    {
+        var args = module.Invocations.Last(i => i.Identifier == "startPreview").Arguments;
+        return ((bool)args[1]!, (bool)args[2]!);
+    }
 }
