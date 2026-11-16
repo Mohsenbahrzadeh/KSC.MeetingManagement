@@ -51,4 +51,5 @@
 - [Backup و Restore](backup-restore.md)
 - [مانیتورینگ](monitoring.md)
 - [ماتریس RTL و موبایل](../testing/rtl-mobile-matrix.md)
+- [چک‌لیست پذیرش مرورگرها و رسانه (TASK-069)](../testing/browser-acceptance.md)
 - [روش آزمون ظرفیت رسانه (TASK-067)](capacity-test.md)
