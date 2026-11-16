@@ -192,4 +192,20 @@ public sealed class RoomTests : BunitContext, IAsyncLifetime
             Assert.Contains("2 نفر در اتاق", roster.TextContent, StringComparison.Ordinal);
         });
     }
+
+    [Fact]
+    public void Browser_stopping_screen_share_updates_the_control_state()
+    {
+        SetupModule();
+        var cut = Render<Room>(p => p.Add(c => c.MeetingId, MeetingId));
+        cut.WaitForAssertion(() => Assert.NotEmpty(cut.FindAll("video.ksc-preview")));
+        cut.FindAll("button").First(b => b.TextContent.Contains("ورود به جلسه", StringComparison.Ordinal)).Click();
+        cut.WaitForAssertion(() => Assert.NotEmpty(cut.FindAll("[role=toolbar]")));
+
+        cut.InvokeAsync(() => cut.Instance.OnScreenShare(true));
+        cut.WaitForAssertion(() => Assert.Contains(cut.FindAll("button"), b => b.GetAttribute("aria-pressed") == "true"));
+
+        cut.InvokeAsync(() => cut.Instance.OnScreenShare(false));
+        cut.WaitForAssertion(() => Assert.Contains(cut.FindAll("button"), b => b.GetAttribute("aria-pressed") == "false"));
+    }
 }

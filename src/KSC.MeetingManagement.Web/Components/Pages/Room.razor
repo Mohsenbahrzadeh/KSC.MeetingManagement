@@ -286,6 +286,13 @@
         StateHasChanged();
     });
 
+    [JSInvokable]
+    public Task OnScreenShare(bool sharing) => InvokeAsync(() =>
+    {
+        _sharing = sharing;
+        StateHasChanged();
+    });
+
     public async ValueTask DisposeAsync()
     {
         _disposed = true;
