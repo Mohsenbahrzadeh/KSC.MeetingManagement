@@ -1,40 +1,176 @@
 @page "/"
+@using KSC.MeetingManagement.Application.Meetings
+@using KSC.MeetingManagement.Calendar
+@using KSC.MeetingManagement.Domain.Meetings
+@using KSC.MeetingManagement.Web.Components.Meetings
+@using KSC.MeetingManagement.Web.Services
+@inject MeetingsApiClient Api
+@inject IDialogService Dialogs
 
 <PageTitle>خانه | مدیریت جلسات</PageTitle>
 
-<section class="ksc-hero" aria-labelledby="home-title">
-    <h1 id="home-title" tabindex="-1">جلسه‌هایتان را ساده و منظم برگزار کنید</h1>
-    <p>تقویم شمسی، دستور جلسه، صورت‌جلسه با گردش تأیید، مصوبات و پیگیری اقدام‌ها، همه در یک‌جا.</p>
-    <div class="ksc-hero-actions">
-        <MudButton Href="/calendar" Variant="Variant.Filled" Size="Size.Large" StartIcon="@Icons.Material.Filled.CalendarMonth">رفتن به تقویم</MudButton>
-        <MudButton Href="/meetings" Variant="Variant.Outlined" Size="Size.Large" StartIcon="@Icons.Material.Filled.Groups">جلسات</MudButton>
+<section class="ksc-dashboard-heading" aria-labelledby="home-title">
+    <div>
+        <span class="ksc-section-eyebrow">فضای کاری / نمای کلی</span>
+        <h1 id="home-title" tabindex="-1">نمای کلی</h1>
+        <p>جلسه‌ها و برنامهٔ پیش رو در یک نگاه.</p>
+    </div>
+    <div class="ksc-dashboard-actions">
+        <MudButton Href="/calendar" Variant="Variant.Outlined" StartIcon="@Icons.Material.Filled.CalendarMonth">تقویم</MudButton>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add" OnClick="CreateAsync">جلسهٔ جدید</MudButton>
     </div>
 </section>
 
-<MudGrid Spacing="3">
-    @foreach (var (item, index) in NavItems.Main.Where(i => i.Href != "/").Select((i, n) => (i, n)))
-    {
-        <MudItem xs="12" sm="6" md="4">
-            <MudCard Class="ksc-tile" Elevation="0">
-                <MudCardContent>
-                    <div class="ksc-tile-icon t@(index % 3 + 1)"><MudIcon Icon="@item.Icon" /></div>
-                    <MudText Class="ksc-tile-title" Typo="Typo.h6">@item.Title</MudText>
-                    <MudText Typo="Typo.body2" Color="Color.Secondary">@Describe(item.Href)</MudText>
-                </MudCardContent>
-                <MudCardActions>
-                    <MudButton Href="@item.Href" Variant="Variant.Text" Color="Color.Primary" EndIcon="@Icons.Material.Filled.ArrowBack">ورود</MudButton>
-                </MudCardActions>
-            </MudCard>
-        </MudItem>
-    }
-</MudGrid>
+<section class="ksc-dashboard-stats" aria-label="خلاصهٔ جلسه‌ها">
+    <MudPaper Class="ksc-stat-card" Outlined="true" Elevation="0">
+        <span class="ksc-stat-icon stat-indigo"><MudIcon Icon="@Icons.Material.Filled.EventNote" /></span>
+        <span class="ksc-stat-copy"><span>جلسه‌های ۷ روز آینده</span><strong>@(_loading ? "—" : PersianText.Digits(CountWithinDays(7)))</strong></span>
+    </MudPaper>
+    <MudPaper Class="ksc-stat-card" Outlined="true" Elevation="0">
+        <span class="ksc-stat-icon stat-teal"><MudIcon Icon="@Icons.Material.Filled.EventAvailable" /></span>
+        <span class="ksc-stat-copy"><span>جلسه‌های ۳۰ روز آینده</span><strong>@(_loading ? "—" : PersianText.Digits(CountWithinDays(30)))</strong></span>
+    </MudPaper>
+    <MudPaper Class="ksc-stat-card" Outlined="true" Elevation="0">
+        <span class="ksc-stat-icon stat-amber"><MudIcon Icon="@Icons.Material.Filled.PendingActions" /></span>
+        <span class="ksc-stat-copy"><span>در حال برگزاری</span><strong>@(_loading ? "—" : PersianText.Digits(_items.Count(m => m.Status == MeetingStatus.InProgress)))</strong></span>
+    </MudPaper>
+</section>
+
+<div class="ksc-dashboard-grid">
+    <section class="ksc-dashboard-main" aria-labelledby="upcoming-title">
+        <div class="ksc-section-heading ksc-dashboard-section-heading">
+            <div><span class="ksc-section-eyebrow">برنامه</span><h2 id="upcoming-title">جلسه‌های پیش رو</h2></div>
+            <MudButton Href="/meetings" Variant="Variant.Text" EndIcon="@Icons.Material.Filled.ArrowBack">همهٔ جلسه‌ها</MudButton>
+        </div>
+
+        @if (_error is not null)
+        {
+            <MudAlert Severity="Severity.Error" Variant="Variant.Outlined" Class="mb-3" role="alert">@_error</MudAlert>
+        }
+        else if (_loading)
+        {
+            <MudPaper Class="ksc-upcoming-list" Outlined="true" Elevation="0">
+                <div class="ksc-dashboard-loading"><MudProgressCircular Size="Size.Small" Indeterminate="true" /><span>در حال دریافت جلسه‌ها…</span></div>
+            </MudPaper>
+        }
+        else if (_upcoming.Count == 0)
+        {
+            <MudPaper Class="ksc-upcoming-empty" Outlined="true" Elevation="0">
+                <span class="ksc-empty-icon"><MudIcon Icon="@Icons.Material.Filled.EventBusy" /></span>
+                <strong>در ۳۰ روز آینده جلسه‌ای ثبت نشده</strong>
+                <span>برای دیدن برنامهٔ تیم، جلسهٔ جدیدی بسازید یا تقویم را بررسی کنید.</span>
+                <MudButton Variant="Variant.Outlined" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add" OnClick="CreateAsync">ساخت جلسه</MudButton>
+            </MudPaper>
+        }
+        else
+        {
+            <div class="ksc-upcoming-list">
+                @foreach (var meeting in _upcoming)
+                {
+                    <a class="ksc-upcoming-item" href="@($"/meetings/{meeting.Id}")">
+                        <span class="ksc-upcoming-date"><strong>@DayNumber(meeting)</strong><small>@MonthName(meeting)</small></span>
+                        <span class="ksc-upcoming-info"><strong>@meeting.Title</strong><span>@TimeText(meeting) <i></i> @ModeLabel(meeting.Mode)</span></span>
+                        <MudChip T="string" Size="Size.Small" Class="@CalendarStatusText.CssClass((CalendarItemStatus)(int)meeting.Status)">@CalendarStatusText.Label((CalendarItemStatus)(int)meeting.Status)</MudChip>
+                        <MudIcon Icon="@Icons.Material.Filled.ChevronLeft" Class="ksc-upcoming-chevron" />
+                    </a>
+                }
+            </div>
+        }
+    </section>
+
+    <aside class="ksc-dashboard-aside" aria-label="میان‌برها">
+        <div class="ksc-section-heading ksc-dashboard-section-heading">
+            <div><span class="ksc-section-eyebrow">ابزارها</span><h2>دسترسی سریع</h2></div>
+        </div>
+        <MudPaper Class="ksc-quick-links" Outlined="true" Elevation="0">
+            @foreach (var item in QuickLinks)
+            {
+                <MudLink Href="@item.Href" Class="ksc-quick-link">
+                    <span class="ksc-quick-link-icon"><MudIcon Icon="@item.Icon" Size="Size.Small" /></span>
+                    <span>@item.Title</span>
+                    <MudIcon Icon="@Icons.Material.Filled.ChevronLeft" Class="ksc-quick-link-chevron" />
+                </MudLink>
+            }
+        </MudPaper>
+    </aside>
+</div>
 
 @code {
-    private static string Describe(string href) => href switch
+    private static readonly DialogOptions FormOptions = new() { MaxWidth = MaxWidth.Small, FullWidth = true, CloseOnEscapeKey = true };
+    private readonly CalendarLayout _layout = new(TehranClock.TimeZone);
+    private readonly List<MeetingDto> _items = [];
+    private bool _loading = true;
+    private string? _error;
+    private DateTimeOffset _now;
+
+    private static readonly (string Title, string Href, string Icon)[] QuickLinks =
+    [
+        ("تقویم", "/calendar", Icons.Material.Filled.CalendarMonth),
+        ("جلسات", "/meetings", Icons.Material.Filled.Groups),
+        ("کمیته‌ها", "/committees", Icons.Material.Filled.AccountTree),
+        ("کاربران و نقش‌ها", "/users", Icons.Material.Filled.ManageAccounts),
+        ("جست‌وجو", "/search", Icons.Material.Filled.Search),
+    ];
+
+    private IReadOnlyList<MeetingDto> _upcoming => _items
+        .Where(m => (m.Status is MeetingStatus.Scheduled or MeetingStatus.InProgress) && m.StartUtc is not null)
+        .OrderBy(m => m.StartUtc)
+        .Take(5)
+        .ToList();
+
+    protected override async Task OnInitializedAsync()
     {
-        "/calendar" => "نمای ماه، هفته، روز و فهرست با تاریخ شمسی؛ جلسهٔ جدید با یک کلیک.",
-        "/meetings" => "فهرست و مدیریت جلسات سازمان.",
-        "/committees" => "کمیته‌ها، اعضا و نقش‌هایشان.",
-        _ => string.Empty,
+        await LoadAsync();
+    }
+
+    private async Task CreateAsync()
+    {
+        var dialog = await Dialogs.ShowAsync<MeetingFormDialog>("جلسهٔ جدید", new DialogParameters<MeetingFormDialog> { { d => d.Layout, _layout } }, FormOptions);
+        if (await dialog.Result is { Canceled: false })
+        {
+            await LoadAsync();
+        }
+    }
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        _error = null;
+        _now = DateTimeOffset.UtcNow;
+        var result = await Api.ListAsync(_now, _now.AddDays(30), null, 0, 200, CancellationToken.None);
+        _items.Clear();
+        if (!result.Succeeded || result.Value is null)
+        {
+            _error = result.Message ?? ApiResultReader.GenericFailure;
+        }
+        else
+        {
+            _items.AddRange(result.Value);
+        }
+
+        _loading = false;
+    }
+
+    private string DayNumber(MeetingDto meeting) => meeting.StartUtc is { } start ? PersianText.Digits(_layout.DayOf(start).Day) : "—";
+
+    private string MonthName(MeetingDto meeting) => meeting.StartUtc is { } start
+        ? KscJalaliCalendarService.Instance.MonthName(_layout.DayOf(start).Month)
+        : "";
+
+    private string TimeText(MeetingDto meeting) => meeting.StartUtc is { } start
+        ? $"{PersianText.Format(_layout.DayOf(start))}، ساعت {PersianText.Time(_layout.TimeOf(start))}"
+        : "زمان تعیین نشده";
+
+    private int CountWithinDays(int days) => _items.Count(m =>
+        (m.Status is MeetingStatus.Scheduled or MeetingStatus.InProgress)
+        && m.StartUtc <= _now.AddDays(days)
+        && m.EndUtc > _now);
+
+    private static string ModeLabel(MeetingMode mode) => mode switch
+    {
+        MeetingMode.InPerson => "حضوری",
+        MeetingMode.Online => "آنلاین",
+        MeetingMode.Hybrid => "ترکیبی",
+        _ => "",
     };
 }

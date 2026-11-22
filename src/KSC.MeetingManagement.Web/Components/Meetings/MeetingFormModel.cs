@@ -74,7 +74,7 @@ public sealed class MeetingFormModel
             errors[nameof(Title)] = $"عنوان نباید بیشتر از {PersianText.Digits(MaxTitleLength)} نویسه باشد.";
         }
 
-        if (Description is { } d && d.Length > MaxDescriptionLength)
+        if (Description is { } d && RichTextContent.ToPlainText(d).Length > MaxDescriptionLength)
         {
             errors[nameof(Description)] = $"توضیحات نباید بیشتر از {PersianText.Digits(MaxDescriptionLength)} نویسه باشد.";
         }

@@ -3,6 +3,7 @@ using System.Text;
 using System.Text.Json;
 using Bunit;
 using KSC.MeetingManagement.Web.Components.Pages;
+using KSC.MeetingManagement.Web.Components.Common;
 using KSC.MeetingManagement.Web.Services;
 using Microsoft.Extensions.DependencyInjection;
 using MudBlazor;
@@ -169,7 +170,8 @@ public sealed class ResolutionsWebTests : BunitContext, IAsyncLifetime
         provider.WaitForAssertion(() => Assert.Contains("متن مصوبه را وارد کنید.", provider.Markup));
         Assert.DoesNotContain(_requests, r => r.Method == HttpMethod.Post && r.Path.EndsWith("/resolutions", StringComparison.Ordinal));
 
-        provider.Find("textarea").Change("متن مصوبهٔ تازه");
+        var editor = provider.FindComponent<KscRichTextEditor>();
+        await provider.InvokeAsync(() => editor.Instance.ContentChanged("متن مصوبهٔ تازه", "متن مصوبهٔ تازه".Length));
         await provider.InvokeAsync(() => provider.FindAll("button").Single(b => b.TextContent.Trim() == "ذخیره").Click());
         provider.WaitForAssertion(() => Assert.Contains(_requests, r => r.Method == HttpMethod.Post && r.Path.EndsWith("/resolutions", StringComparison.Ordinal)));
         var post = _requests.Single(r => r.Method == HttpMethod.Post && r.Path.EndsWith("/resolutions", StringComparison.Ordinal));

@@ -86,7 +86,7 @@ public class MediaTokenTests
     [Theory]
     [InlineData(MediaRole.Host, true, true, true, true)]
     [InlineData(MediaRole.Participant, false, true, true, true)]
-    [InlineData(MediaRole.Guest, false, true, true, false)]
+    [InlineData(MediaRole.Guest, false, true, true, true)]
     [InlineData(MediaRole.Observer, false, false, true, false)]
     public void Capabilities_follow_the_role(MediaRole role, bool admin, bool publish, bool subscribe, bool data)
     {
@@ -100,7 +100,7 @@ public class MediaTokenTests
     }
 
     [Fact]
-    public void No_role_can_create_list_or_record_rooms_and_guests_cannot_share_the_screen()
+    public void Only_host_can_share_screen_initially_and_no_role_can_create_or_record_rooms()
     {
         foreach (var role in Enum.GetValues<MediaRole>())
         {
@@ -111,10 +111,23 @@ public class MediaTokenTests
             Assert.False(video.GetProperty("hidden").GetBoolean());
         }
 
-        var guest = Payload(Service().Issue(Request(MediaRole.Guest)).Token).GetProperty("video").GetProperty("canPublishSources");
-        var host = Payload(Service().Issue(Request(MediaRole.Host)).Token).GetProperty("video").GetProperty("canPublishSources");
-        Assert.DoesNotContain(guest.EnumerateArray(), e => e.GetString() == "screen_share");
-        Assert.Contains(host.EnumerateArray(), e => e.GetString() == "screen_share");
+        var hostSources = Payload(Service().Issue(Request(MediaRole.Host)).Token).GetProperty("video").GetProperty("canPublishSources");
+        Assert.Contains(hostSources.EnumerateArray(), e => e.GetString() == "screen_share");
+        foreach (var role in new[] { MediaRole.Participant, MediaRole.Guest })
+        {
+            var sources = Payload(Service().Issue(Request(role)).Token).GetProperty("video").GetProperty("canPublishSources");
+            Assert.DoesNotContain(sources.EnumerateArray(), e => e.GetString() == "screen_share");
+        }
+
+        var observer = Payload(Service().Issue(Request(MediaRole.Observer)).Token).GetProperty("video");
+        Assert.False(observer.TryGetProperty("canPublishSources", out _));
+
+        foreach (var role in new[] { MediaRole.Participant, MediaRole.Guest })
+        {
+            var video = Payload(Service().Issue(Request(role)).Token).GetProperty("video");
+            Assert.True(video.GetProperty("canPublishData").GetBoolean());
+        }
+        Assert.False(observer.GetProperty("canPublishData").GetBoolean());
     }
 
     [Theory]

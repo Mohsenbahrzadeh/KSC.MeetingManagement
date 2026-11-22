@@ -27,8 +27,8 @@ internal static class LiveKitJwt
 public sealed class LiveKitTokenService(MediaOptions options, TimeProvider clock) : IMediaTokenService
 {
     private const int MaxNameLength = 100;
-    private static readonly string[] AllSources = ["camera", "microphone", "screen_share", "screen_share_audio"];
-    private static readonly string[] GuestSources = ["camera", "microphone"];
+    private static readonly string[] HostSources = ["camera", "microphone", "screen_share", "screen_share_audio"];
+    private static readonly string[] ParticipantSources = ["camera", "microphone"];
 
     public bool IsConfigured => options.IsComplete;
 
@@ -67,7 +67,7 @@ public sealed class LiveKitTokenService(MediaOptions options, TimeProvider clock
             ["video"] = Grant(request.Room, request.Role),
         };
 
-        return new MediaToken(Sign(payload), options.ServerUrl!, request.Room, request.Identity, request.Role, expires);
+        return new MediaToken(Sign(payload), options.ServerUrl!, request.Room, request.Identity, request.Role, expires, string.Empty);
     }
 
     private static Dictionary<string, object> Grant(string room, MediaRole role)
@@ -78,7 +78,8 @@ public sealed class LiveKitTokenService(MediaOptions options, TimeProvider clock
             ["roomJoin"] = true,
             ["canSubscribe"] = true,
             ["canPublish"] = role != MediaRole.Observer,
-            ["canPublishData"] = role is MediaRole.Host or MediaRole.Participant,
+            // Publishers need reliable data for whiteboard synchronization and organizer-mediated screen-share requests.
+            ["canPublishData"] = role != MediaRole.Observer,
             ["canUpdateOwnMetadata"] = false,
             ["roomAdmin"] = role == MediaRole.Host,
             ["roomCreate"] = false,
@@ -90,7 +91,7 @@ public sealed class LiveKitTokenService(MediaOptions options, TimeProvider clock
 
         if (role != MediaRole.Observer)
         {
-            grant["canPublishSources"] = role == MediaRole.Guest ? GuestSources : AllSources;
+            grant["canPublishSources"] = role == MediaRole.Host ? HostSources : ParticipantSources;
         }
 
         return grant;

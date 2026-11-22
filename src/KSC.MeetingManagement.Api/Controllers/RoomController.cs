@@ -17,7 +17,8 @@ public sealed record JoinRoomAsGuestRequest(Guid ParticipantId, string Token);
 public sealed record WaitingResponse(string Status, int RetryAfterSeconds);
 
 public sealed record JoinRoomResponse(
-    string ServerUrl, string Token, string Room, MediaRole Role, DateTimeOffset ExpiresAtUtc, IReadOnlyList<IceServer>? IceServers = null);
+    string ServerUrl, string Token, string Room, MediaRole Role, DateTimeOffset ExpiresAtUtc, string PresenterIdentity, IReadOnlyList<IceServer>? IceServers = null);
+public sealed record ScreenSharePermissionRequest(bool Allowed);
 
 [ApiController]
 [Route("api/v1/meetings/{meetingId:guid}/room")]
@@ -70,6 +71,69 @@ public sealed class RoomController(MediaAccessService media, RoomControlService 
     public Task<IActionResult> Remove(Guid meetingId, string identity, CancellationToken cancellationToken) =>
         Decide(() => control.RemoveAsync(meetingId, identity, cancellationToken));
 
+    /// <summary>Mutes all other participants' microphones; they may unmute themselves at any time.</summary>
+    [HttpPost("mute-all")]
+    [HasPermission(Permissions.MeetingsEdit)]
+    [Audited("room.mute-all", "room", "meetingId")]
+    public async Task<IActionResult> MuteAll(Guid meetingId, CancellationToken cancellationToken)
+    {
+        try
+        {
+            return await control.MuteAllAsync(meetingId, cancellationToken) ? NoContent() : NotFound();
+        }
+        catch (HttpRequestException)
+        {
+            return Problem("کنترل میکروفون شرکت‌کنندگان از دسترس خارج است.", statusCode: StatusCodes.Status503ServiceUnavailable);
+        }
+    }
+
+    /// <summary>The organizer grants or revokes one participant's screen-share publishing permission.</summary>
+    [HttpPut("participants/{identity}/screen-share-permission")]
+    [HasPermission(Permissions.MeetingsEdit)]
+    [Audited("room.screen-share-permission", "room", "meetingId")]
+    public async Task<IActionResult> SetScreenSharePermission(Guid meetingId, string identity, [FromBody] ScreenSharePermissionRequest request, CancellationToken cancellationToken)
+    {
+        try
+        {
+            return await control.SetScreenSharePermissionAsync(meetingId, identity, request.Allowed, cancellationToken)
+                ? NoContent()
+                : NotFound();
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return Forbid();
+        }
+        catch (HttpRequestException)
+        {
+            return Problem("تغییر مجوز اشتراک صفحه در دسترس نیست.", statusCode: StatusCodes.Status503ServiceUnavailable);
+        }
+    }
+
+    [HttpPost("recording/{actionName}")]
+    [HasPermission(Permissions.MeetingsEdit)]
+    [Audited("room.recording", "room", "meetingId")]
+    public async Task<IActionResult> SetRecording(Guid meetingId, string actionName, CancellationToken cancellationToken)
+    {
+        if (actionName is not ("start" or "stop")) return NotFound();
+        try
+        {
+            if (!await control.SetRecordingAsync(meetingId, actionName == "start", cancellationToken)) return NotFound();
+            return NoContent();
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return Forbid();
+        }
+        catch (InvalidOperationException)
+        {
+            return Problem("ضبط سمت سرور پیکربندی نشده است.", statusCode: StatusCodes.Status503ServiceUnavailable);
+        }
+        catch (HttpRequestException)
+        {
+            return Problem("سرویس ضبط جلسه در دسترس نیست.", statusCode: StatusCodes.Status503ServiceUnavailable);
+        }
+    }
+
     private async Task<IActionResult> Decide(Func<Task<RoomEntryDto?>> action)
     {
         try
@@ -90,7 +154,7 @@ public sealed class RoomController(MediaAccessService media, RoomControlService 
     {
         MediaJoinOutcome.Granted => Ok(new JoinRoomResponse(
             result.Token!.ServerUrl, result.Token.Token, result.Token.Room, result.Token.Role, result.Token.ExpiresAtUtc,
-            turn.Issue(result.Token.Identity) is { } ice ? [ice] : null)),
+            result.Token.PresenterIdentity, turn.Issue(result.Token.Identity) is { } ice ? [ice] : null)),
         MediaJoinOutcome.MeetingNotFound => NotFound(),
         MediaJoinOutcome.Waiting => Accepted(new WaitingResponse("Waiting", WaitingRetrySeconds)),
         MediaJoinOutcome.NotAllowed => Problem("شما اجازهٔ ورود به این جلسه را ندارید.", statusCode: StatusCodes.Status403Forbidden),

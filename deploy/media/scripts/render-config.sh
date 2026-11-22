@@ -7,6 +7,7 @@ for v in LIVEKIT_API_KEY LIVEKIT_API_SECRET API_PUBLIC_URL TURN_REALM TURN_EXTER
   [ -n "${!v:-}" ] || { echo "missing $v in .env" >&2; exit 1; }
 done
 envsubst < livekit.yaml > livekit.rendered.yaml
+envsubst < egress.yaml > egress.rendered.yaml
 envsubst < turnserver.conf > turnserver.rendered.conf
-chmod 600 livekit.rendered.yaml turnserver.rendered.conf
+chmod 600 livekit.rendered.yaml egress.rendered.yaml turnserver.rendered.conf
 echo "rendered"

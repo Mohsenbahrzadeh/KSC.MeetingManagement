@@ -8,13 +8,13 @@
 
 <MudDialog>
     <DialogContent>
-        <MudStack Spacing="2">
+        <div class="ksc-form-grid">
             @if (Member is null)
             {
                 <MudTextField @bind-Value="_email" Label="ایمیل" InputType="InputType.Email" Required="true" Immediate="true" Disabled="_saving"
                               Error="@HasError("email")" ErrorText="@ErrorOf("email")" />
                 <MudTextField @bind-Value="_displayName" Label="نام نمایشی" MaxLength="200" Disabled="_saving" />
-                <MudTextField @bind-Value="_password" Label="رمز عبور" InputType="InputType.Password" Immediate="true" Disabled="_saving"
+                <MudTextField Class="ksc-form-span-2" @bind-Value="_password" Label="رمز عبور" InputType="InputType.Password" Immediate="true" Disabled="_saving"
                               HelperText="@($"حداقل {PersianText.Digits(PasswordPolicy.MinLength)} نویسه")" Error="@HasError("password")" ErrorText="@ErrorOf("password")" />
             }
             else
@@ -22,8 +22,8 @@
                 <MudText Typo="Typo.subtitle1">@Member.DisplayName (@Member.Email)</MudText>
             }
 
-            <MudText Typo="Typo.subtitle2" id="roles-label">نقش‌ها</MudText>
-            <div role="group" aria-labelledby="roles-label">
+            <MudText Class="ksc-form-span-2" Typo="Typo.subtitle2" id="roles-label">نقش‌ها</MudText>
+            <div class="ksc-form-span-2" role="group" aria-labelledby="roles-label">
                 @foreach (var role in Roles.All)
                 {
                     <MudCheckBox T="bool" Value="@_roles.Contains(role)" ValueChanged="@(v => Toggle(role, v))" Label="@RoleText.Label(role)" Disabled="_saving" />
@@ -31,13 +31,13 @@
             </div>
             @if (HasError("roles"))
             {
-                <MudText Color="Color.Error" Typo="Typo.caption" role="alert">@ErrorOf("roles")</MudText>
+                <MudText Class="ksc-form-span-2" Color="Color.Error" Typo="Typo.caption" role="alert">@ErrorOf("roles")</MudText>
             }
             @if (_serverError is not null)
             {
-                <MudAlert Severity="Severity.Error" Variant="Variant.Outlined" role="alert">@_serverError</MudAlert>
+                <MudAlert Class="ksc-form-span-2" Severity="Severity.Error" Variant="Variant.Outlined" role="alert">@_serverError</MudAlert>
             }
-        </MudStack>
+        </div>
     </DialogContent>
     <DialogActions>
         <MudButton OnClick="Cancel" Disabled="_saving">انصراف</MudButton>

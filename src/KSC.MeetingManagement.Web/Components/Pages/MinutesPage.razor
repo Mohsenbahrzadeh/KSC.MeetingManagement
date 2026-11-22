@@ -11,8 +11,8 @@
 @inject ISnackbar Snackbar
 
 <PageTitle>صورت‌جلسه | مدیریت جلسات</PageTitle>
-<MudButton Href="@($"/meetings/{MeetingId}")" Variant="Variant.Text" Size="Size.Small">« بازگشت به جلسه</MudButton>
-<MudText Typo="Typo.h4" Class="ksc-page-title" tabindex="-1">صورت‌جلسه</MudText>
+<MudButton Href="@($"/meetings/{MeetingId}")" Variant="Variant.Text" Size="Size.Small" Class="ksc-back-link" StartIcon="@Icons.Material.Filled.ArrowForward">بازگشت به جلسه</MudButton>
+<div class="ksc-page-heading"><div><span class="ksc-section-eyebrow">مستندات جلسه</span><MudText Typo="Typo.h4" Class="ksc-page-title" tabindex="-1">صورت‌جلسه</MudText><p class="ksc-page-sub">متن رسمی جلسه و گردش بررسی و تأیید نسخه‌ها.</p></div></div>
 
 @if (_actionError is not null)
 {
@@ -27,11 +27,7 @@
         </MudStack>
         @if (_editing)
         {
-            <MudTextField @bind-Value="_content" Label="متن صورت‌جلسه" Lines="12" MaxLength="Minutes.MaxContentLength" Disabled="_busy" />
-            @if (_contentError is not null)
-            {
-                <MudText Color="Color.Error" role="alert">@_contentError</MudText>
-            }
+            <KscRichTextEditor @bind-Value="_content" Label="متن صورت‌جلسه" MaxLength="Minutes.MaxContentLength" Disabled="_busy" Error="@_contentError" />
             <MudStack Row="true" Spacing="2" Class="my-2">
                 <MudButton Variant="Variant.Filled" Color="Color.Primary" Disabled="_busy" OnClick="SaveAsync">ذخیرهٔ نسخه</MudButton>
                 <MudButton Variant="Variant.Text" Disabled="_busy" OnClick="() => _editing = false">انصراف</MudButton>
@@ -39,7 +35,7 @@
         }
         else
         {
-            <MudPaper Outlined="true" Elevation="0" Class="pa-4 mb-3" Style="white-space: pre-wrap; overflow-wrap: anywhere">@minutes.Content</MudPaper>
+            <MudPaper Outlined="true" Elevation="0" Class="ksc-document-content pa-4 mb-3"><div class="ksc-rich-output">@((MarkupString)RichTextContent.ToDisplayHtml(minutes.Content, Minutes.MaxContentLength))</div></MudPaper>
             <MudStack Row="true" Wrap="Wrap.Wrap" Spacing="2" Class="mb-3">
                 @if (CanWrite && minutes.Status is MinutesStatus.Draft or MinutesStatus.Rejected)
                 {
@@ -61,11 +57,7 @@
             </MudStack>
             @if (_commentAction != CommentAction.None)
             {
-                <MudTextField @bind-Value="_comment" Label="@(_commentAction == CommentAction.Reject ? "دلیل رد" : "دلیل بازگشایی")" Lines="2" MaxLength="Minutes.MaxCommentLength" Disabled="_busy" />
-                @if (_commentError is not null)
-                {
-                    <MudText Color="Color.Error" role="alert">@_commentError</MudText>
-                }
+                <KscRichTextEditor @bind-Value="_comment" Label="@(_commentAction == CommentAction.Reject ? "دلیل رد صورت‌جلسه" : "دلیل بازگشایی صورت‌جلسه")" MaxLength="Minutes.MaxCommentLength" Disabled="_busy" Error="@_commentError" />
                 <MudStack Row="true" Spacing="2" Class="my-2">
                     <MudButton Variant="Variant.Filled" Color="Color.Primary" Disabled="_busy" OnClick="SendCommentAsync">ثبت</MudButton>
                     <MudButton Variant="Variant.Text" Disabled="_busy" OnClick="() => _commentAction = CommentAction.None">انصراف</MudButton>
@@ -74,15 +66,15 @@
         }
         @if (minutes.Transitions.Count > 0)
         {
-            <MudText Typo="Typo.h6">تاریخچهٔ تأیید</MudText>
-            <ul>
+            <MudText Typo="Typo.h6" Class="ksc-subsection-title">تاریخچهٔ تأیید</MudText>
+            <ul class="ksc-history-list">
                 @foreach (var transition in minutes.Transitions)
                 {
-                    <li>@StatusText(transition.From) ← @StatusText(transition.To) — نسخهٔ @PersianText.Digits(transition.VersionNumber) — @transition.AtUtc.ToLocalTime().ToString("yyyy/MM/dd HH:mm") @transition.Comment</li>
+                    <li>@StatusText(transition.From) ← @StatusText(transition.To) — نسخهٔ @PersianText.Digits(transition.VersionNumber) — @transition.AtUtc.ToLocalTime().ToString("yyyy/MM/dd HH:mm") @if (!string.IsNullOrWhiteSpace(transition.Comment)) { <div class="ksc-rich-output ksc-inline-rich">@((MarkupString)RichTextContent.ToDisplayHtml(transition.Comment, Minutes.MaxCommentLength))</div> }</li>
                 }
             </ul>
         }
-        <MudText Typo="Typo.h6">نسخه‌ها</MudText>
+        <MudText Typo="Typo.h6" Class="ksc-subsection-title">نسخه‌ها</MudText>
         <StatePanel State="_versionsPanel" ErrorText="@_versionsError" OnRetry="LoadVersionsAsync" EmptyText="نسخه‌ای موجود نیست.">
             <MudStack Row="true" Wrap="Wrap.Wrap" Spacing="2">
                 @foreach (var version in _versions)
@@ -93,9 +85,9 @@
         </StatePanel>
         @if (_selectedVersion is { } selected)
         {
-            <MudPaper Outlined="true" Elevation="0" Class="pa-4 my-3" Style="white-space: pre-wrap; overflow-wrap: anywhere">
+            <MudPaper Outlined="true" Elevation="0" Class="ksc-document-content pa-4 my-3">
                 <MudText Typo="Typo.subtitle1">نسخهٔ @PersianText.Digits(selected.Number)</MudText>
-                @selected.Content
+                <div class="ksc-rich-output">@((MarkupString)RichTextContent.ToDisplayHtml(selected.Content, Minutes.MaxContentLength))</div>
             </MudPaper>
         }
     }
@@ -106,8 +98,7 @@
 }
 @if (_panel == PanelState.Empty && _editing)
 {
-    <MudTextField @bind-Value="_content" Label="متن صورت‌جلسه" Lines="12" MaxLength="Minutes.MaxContentLength" Disabled="_busy" />
-    @if (_contentError is not null) { <MudText Color="Color.Error" role="alert">@_contentError</MudText> }
+    <KscRichTextEditor @bind-Value="_content" Label="متن صورت‌جلسه" MaxLength="Minutes.MaxContentLength" Disabled="_busy" Error="@_contentError" />
     <MudButton Variant="Variant.Filled" Color="Color.Primary" Disabled="_busy" OnClick="SaveAsync">ذخیرهٔ نسخه</MudButton>
     <MudButton Variant="Variant.Text" Disabled="_busy" OnClick="() => _editing = false">انصراف</MudButton>
 }
@@ -199,8 +190,8 @@
 
     private async Task SaveAsync()
     {
-        _contentError = string.IsNullOrWhiteSpace(_content) ? "متن صورت‌جلسه را وارد کنید." :
-            _content.Length > Minutes.MaxContentLength ? "متن بیش از حد طولانی است." : null;
+        _contentError = string.IsNullOrWhiteSpace(RichTextContent.ToPlainText(_content)) ? "متن صورت‌جلسه را وارد کنید." :
+            RichTextContent.ToPlainText(_content).Length > Minutes.MaxContentLength ? "متن بیش از حد طولانی است." : null;
         if (_contentError is not null) return;
         await MutateAsync(() => Api.SaveAsync(MeetingId, _minutes?.CurrentVersionNumber ?? 0, _content.Trim(), CancellationToken.None));
     }
@@ -229,8 +220,9 @@
 
     private async Task SendCommentAsync()
     {
-        _commentError = string.IsNullOrWhiteSpace(_comment) ? "دلیل را وارد کنید." :
-            _comment.Trim().Length > Minutes.MaxCommentLength ? "دلیل بیش از حد طولانی است." : null;
+        var plainComment = RichTextContent.ToPlainText(_comment);
+        _commentError = string.IsNullOrWhiteSpace(plainComment) ? "دلیل را وارد کنید." :
+            plainComment.Length > Minutes.MaxCommentLength ? "دلیل بیش از حد طولانی است." : null;
         if (_commentError is not null) return;
         var reason = _comment.Trim();
         await MutateAsync(() => _commentAction == CommentAction.Reject

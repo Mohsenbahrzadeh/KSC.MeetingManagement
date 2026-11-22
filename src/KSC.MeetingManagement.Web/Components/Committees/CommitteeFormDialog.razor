@@ -1,4 +1,5 @@
 @using KSC.MeetingManagement.Application.Committees
+@using KSC.MeetingManagement.Domain.Meetings
 @using KSC.MeetingManagement.Web.Services
 @implements IDisposable
 @inject CommitteesApiClient Api
@@ -6,19 +7,21 @@
 
 <MudDialog>
     <DialogContent>
-        <MudStack Spacing="2">
+        <div class="ksc-form-grid">
             <MudTextField @bind-Value="_name" Label="نام کمیته" Required="true" Immediate="true" MaxLength="200"
                           Error="@(_nameError is not null)" ErrorText="@_nameError" Disabled="_saving" />
-            <MudTextField @bind-Value="_description" Label="توضیحات" Lines="3" MaxLength="2000" Disabled="_saving" />
+            <div class="ksc-form-span-2">
+                <KscRichTextEditor @bind-Value="_description" Label="توضیحات کمیته" MaxLength="KSC.MeetingManagement.Domain.Meetings.Committee.MaxDescriptionLength" Disabled="_saving" />
+            </div>
             @if (Committee is not null)
             {
                 <MudSwitch T="bool" @bind-Value="_isActive" Label="فعال" Disabled="_saving" />
             }
             @if (_serverError is not null)
             {
-                <MudAlert Severity="Severity.Error" Variant="Variant.Outlined" role="alert">@_serverError</MudAlert>
+                <MudAlert Class="ksc-form-span-2" Severity="Severity.Error" Variant="Variant.Outlined" role="alert">@_serverError</MudAlert>
             }
-        </MudStack>
+        </div>
     </DialogContent>
     <DialogActions>
         <MudButton OnClick="Cancel" Disabled="_saving">انصراف</MudButton>

@@ -51,10 +51,9 @@ public sealed class AgendaItem
             throw new MeetingDomainException($"Agenda item title cannot exceed {MaxTitleLength} characters.");
         }
 
-        if (description is { Length: > MaxDescriptionLength })
-        {
-            throw new MeetingDomainException($"Agenda item description cannot exceed {MaxDescriptionLength} characters.");
-        }
+        var normalizedDescription = string.IsNullOrWhiteSpace(description) ? null : RichTextContent.Sanitize(description, MaxDescriptionLength);
+        if (normalizedDescription is not null && string.IsNullOrWhiteSpace(RichTextContent.ToPlainText(normalizedDescription)))
+            normalizedDescription = null;
 
         if (durationMinutes is < 1 or > MaxDurationMinutes)
         {
@@ -67,7 +66,7 @@ public sealed class AgendaItem
         }
 
         Title = title.Trim();
-        Description = string.IsNullOrWhiteSpace(description) ? null : description.Trim();
+        Description = normalizedDescription;
         PresenterUserId = presenterUserId;
         DurationMinutes = durationMinutes;
     }

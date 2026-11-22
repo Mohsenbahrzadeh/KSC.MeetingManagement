@@ -1,5 +1,6 @@
 @page "/committees"
 @using KSC.MeetingManagement.Application.Committees
+@using KSC.MeetingManagement.Domain.Meetings
 @using KSC.MeetingManagement.Calendar
 @using KSC.MeetingManagement.Web.Components.Committees
 @using KSC.MeetingManagement.Web.Components.Common
@@ -9,12 +10,10 @@
 
 <PageTitle>کمیته‌ها | مدیریت جلسات</PageTitle>
 
-<MudText Typo="Typo.h4" Class="ksc-page-title" tabindex="-1">کمیته‌ها</MudText>
-
-<MudStack Row="true" Class="mb-3">
-    <MudSpacer />
-    <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="() => ShowAsync(null)">کمیتهٔ جدید</MudButton>
-</MudStack>
+<div class="ksc-page-heading">
+    <div><span class="ksc-section-eyebrow">ساختار سازمان</span><MudText Typo="Typo.h4" Class="ksc-page-title" tabindex="-1">کمیته‌ها</MudText><p class="ksc-page-sub">گروه‌ها و اعضای مسئول بررسی و تصمیم‌گیری.</p></div>
+    <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add" OnClick="() => ShowAsync(null)">کمیتهٔ جدید</MudButton>
+</div>
 
 <StatePanel State="_panel" ErrorText="@_error" OnRetry="LoadAsync" EmptyText="هنوز کمیته‌ای تعریف نشده است.">
     <MudTable Items="_items" Dense="true" Hover="true" Elevation="0">
@@ -27,7 +26,16 @@
         </HeaderContent>
         <RowTemplate>
             <MudTd DataLabel="نام">@context.Name</MudTd>
-            <MudTd DataLabel="توضیحات">@(context.Description ?? "—")</MudTd>
+            <MudTd DataLabel="توضیحات">
+                @if (string.IsNullOrWhiteSpace(context.Description))
+                {
+                    <text>—</text>
+                }
+                else
+                {
+                    <div class="ksc-rich-output ksc-inline-rich">@((MarkupString)RichTextContent.ToDisplayHtml(context.Description, Committee.MaxDescriptionLength))</div>
+                }
+            </MudTd>
             <MudTd DataLabel="اعضا">@PersianText.Digits(context.Members.Count)</MudTd>
             <MudTd DataLabel="وضعیت">
                 <MudChip T="string" Size="Size.Small" Color="@(context.IsActive ? Color.Success : Color.Default)">@(context.IsActive ? "فعال" : "غیرفعال")</MudChip>

@@ -14,11 +14,12 @@
     <HeadOutlet @rendermode="InteractiveServer" />
 </head>
 
-<body>
+<body dir="rtl">
     <Routes @rendermode="InteractiveServer" />
     <ReconnectModal />
     <script src="@Assets["_framework/blazor.web.js"]"></script>
     <script src="@Assets["_content/MudBlazor/MudBlazor.min.js"]"></script>
+    <script src="@Assets["ksc-rich-text.js"]" type="module"></script>
 </body>
 
 </html>

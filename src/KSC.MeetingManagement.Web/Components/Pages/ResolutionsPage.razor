@@ -13,15 +13,14 @@
 @inject ISnackbar Snackbar
 
 <PageTitle>مصوبات | مدیریت جلسات</PageTitle>
-<MudButton Href="@($"/meetings/{MeetingId}")" Variant="Variant.Text" Size="Size.Small">« بازگشت به جلسه</MudButton>
-<MudStack Row="true" AlignItems="AlignItems.Center" Class="mb-3">
-    <MudText Typo="Typo.h4" Class="ksc-page-title" tabindex="-1">مصوبات</MudText>
-    <MudSpacer />
+<MudButton Href="@($"/meetings/{MeetingId}")" Variant="Variant.Text" Size="Size.Small" Class="ksc-back-link" StartIcon="@Icons.Material.Filled.ArrowForward">بازگشت به جلسه</MudButton>
+<div class="ksc-page-heading">
+    <div><span class="ksc-section-eyebrow">تصمیم‌های جلسه</span><MudText Typo="Typo.h4" Class="ksc-page-title" tabindex="-1">مصوبات</MudText><p class="ksc-page-sub">ثبت تصمیم‌ها، وضعیت تصویب و پیگیری تغییرات.</p></div>
     @if (CanWrite && _panel is PanelState.Ready or PanelState.Empty)
     {
         <MudButton Variant="Variant.Filled" Color="Color.Primary" Disabled="_busy" OnClick="() => EditAsync(null)">مصوبهٔ جدید</MudButton>
     }
-</MudStack>
+</div>
 
 @if (_actionError is not null)
 {
@@ -37,15 +36,15 @@
         </HeaderContent>
         <RowTemplate>
             <MudTd DataLabel="شماره">@PersianText.Digits(context.Number)</MudTd>
-            <MudTd DataLabel="متن و موضوع" Style="white-space: pre-wrap; overflow-wrap: anywhere">
-                @context.Text
+            <MudTd DataLabel="متن و موضوع" Class="ksc-resolution-cell">
+                <div class="ksc-rich-output">@((MarkupString)RichTextContent.ToDisplayHtml(context.Text, Resolution.MaxTextLength))</div>
                 @if (context.AgendaItemId is { } agendaId)
                 {
                     <div>موضوع: @(_agendaNames.TryGetValue(agendaId, out var name) ? name : "موضوع دستور جلسه")</div>
                 }
                 @if (!string.IsNullOrWhiteSpace(context.RevocationReason))
                 {
-                    <div>دلیل ابطال: @context.RevocationReason</div>
+                    <div class="ksc-rich-output ksc-inline-rich">دلیل ابطال: @((MarkupString)RichTextContent.ToDisplayHtml(context.RevocationReason, Resolution.MaxReasonLength))</div>
                 }
             </MudTd>
             <MudTd DataLabel="وضعیت">@StatusText(context.Status)</MudTd>
@@ -67,8 +66,7 @@
     {
         <MudPaper Class="pa-3 mt-3" Outlined="true" Elevation="0">
             <MudText Typo="Typo.subtitle1">ابطال مصوبهٔ @PersianText.Digits(selected.Number)</MudText>
-            <MudTextField @bind-Value="_reason" Label="دلیل ابطال" Required="true" MaxLength="Resolution.MaxReasonLength" Lines="2" Disabled="_busy" />
-            @if (_reasonError is not null) { <MudText Color="Color.Error" role="alert">@_reasonError</MudText> }
+            <KscRichTextEditor @bind-Value="_reason" Label="دلیل ابطال مصوبه" MaxLength="Resolution.MaxReasonLength" Disabled="_busy" Error="@_reasonError" />
             <MudButton Variant="Variant.Filled" Color="Color.Error" Disabled="_busy" OnClick="RevokeAsync">ثبت ابطال</MudButton>
             <MudButton Variant="Variant.Text" Disabled="_busy" OnClick="() => _revokeItem = null">انصراف</MudButton>
         </MudPaper>
@@ -147,8 +145,9 @@
     private async Task RevokeAsync()
     {
         if (_revokeItem is not { } item || _busy) return;
-        _reasonError = string.IsNullOrWhiteSpace(_reason) ? "دلیل ابطال را وارد کنید." :
-            _reason.Trim().Length > Resolution.MaxReasonLength ? "دلیل بیش از حد طولانی است." : null;
+        var plainReason = RichTextContent.ToPlainText(_reason);
+        _reasonError = string.IsNullOrWhiteSpace(plainReason) ? "دلیل ابطال را وارد کنید." :
+            plainReason.Length > Resolution.MaxReasonLength ? "دلیل بیش از حد طولانی است." : null;
         if (_reasonError is not null) return;
         await MutateAsync(() => Api.RevokeAsync(MeetingId, item.Id, item.LockVersion, _reason.Trim(), CancellationToken.None));
     }

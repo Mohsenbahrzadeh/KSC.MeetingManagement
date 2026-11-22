@@ -13,15 +13,14 @@
 @inject ISnackbar Snackbar
 
 <PageTitle>اقدامات پیگیری | مدیریت جلسات</PageTitle>
-<MudButton Href="@($"/meetings/{MeetingId}")" Variant="Variant.Text" Size="Size.Small">« بازگشت به جلسه</MudButton>
-<MudStack Row="true" AlignItems="AlignItems.Center" Class="mb-3">
-    <MudText Typo="Typo.h4" Class="ksc-page-title" tabindex="-1">اقدامات پیگیری</MudText>
-    <MudSpacer />
+<MudButton Href="@($"/meetings/{MeetingId}")" Variant="Variant.Text" Size="Size.Small" Class="ksc-back-link" StartIcon="@Icons.Material.Filled.ArrowForward">بازگشت به جلسه</MudButton>
+<div class="ksc-page-heading">
+    <div><span class="ksc-section-eyebrow">پیگیری تصمیم‌ها</span><MudText Typo="Typo.h4" Class="ksc-page-title" tabindex="-1">اقدامات پیگیری</MudText><p class="ksc-page-sub">مسئولیت‌ها، مهلت‌ها و وضعیت انجام کارهای جلسه.</p></div>
     @if (CanManage && _panel is PanelState.Ready or PanelState.Empty)
     {
         <MudButton Variant="Variant.Filled" Color="Color.Primary" Disabled="_busy" OnClick="() => EditAsync(null)">اقدام جدید</MudButton>
     }
-</MudStack>
+</div>
 
 @if (_actionError is not null)
 {
@@ -39,9 +38,9 @@
         <RowTemplate>
             <MudTd DataLabel="عنوان" Style="white-space: pre-wrap; overflow-wrap: anywhere">
                 <strong>@context.Title</strong>
-                @if (!string.IsNullOrWhiteSpace(context.Description)) { <div>@context.Description</div> }
+                @if (!string.IsNullOrWhiteSpace(context.Description)) { <div class="ksc-rich-output ksc-inline-rich">@((MarkupString)RichTextContent.ToDisplayHtml(context.Description, ActionItem.MaxDescriptionLength))</div> }
                 @if (context.ResolutionId is not null) { <div>مرتبط با مصوبه</div> }
-                @if (!string.IsNullOrWhiteSpace(context.Note)) { <div>یادداشت: @context.Note</div> }
+                @if (!string.IsNullOrWhiteSpace(context.Note)) { <div class="ksc-rich-output ksc-inline-rich">یادداشت: @((MarkupString)RichTextContent.ToDisplayHtml(context.Note, ActionItem.MaxNoteLength))</div> }
             </MudTd>
             <MudTd DataLabel="مسئول">@OwnerName(context.OwnerUserId)</MudTd>
             <MudTd DataLabel="سررسید">@DueText(context.DueDate)</MudTd>
@@ -70,8 +69,7 @@
     {
         <MudPaper Class="pa-3 mt-3" Outlined="true" Elevation="0">
             <MudText Typo="Typo.subtitle1">@(_cancelling ? "لغو" : "تکمیل") @selected.Title</MudText>
-            <MudTextField @bind-Value="_note" Label="@(_cancelling ? "دلیل لغو" : "یادداشت تکمیل (اختیاری)")" Lines="2" MaxLength="ActionItem.MaxNoteLength" Disabled="_busy" />
-            @if (_noteError is not null) { <MudText Color="Color.Error" role="alert">@_noteError</MudText> }
+            <KscRichTextEditor @bind-Value="_note" Label="@(_cancelling ? "دلیل لغو اقدام" : "یادداشت تکمیل (اختیاری)")" MaxLength="ActionItem.MaxNoteLength" Disabled="_busy" Error="@_noteError" />
             <MudButton Variant="Variant.Filled" Color="@(_cancelling ? Color.Error : Color.Primary)" Disabled="_busy" OnClick="SaveNoteAsync">ثبت</MudButton>
             <MudButton Variant="Variant.Text" Disabled="_busy" OnClick="() => _noteItem = null">انصراف</MudButton>
         </MudPaper>
@@ -154,13 +152,14 @@
     private async Task SaveNoteAsync()
     {
         if (_busy || _noteItem is not { } item) return;
-        _noteError = _cancelling && string.IsNullOrWhiteSpace(_note) ? "دلیل لغو را وارد کنید." :
-            _note.Trim().Length > ActionItem.MaxNoteLength ? "یادداشت بیش از حد طولانی است." : null;
+        var plainNote = RichTextContent.ToPlainText(_note);
+        _noteError = _cancelling && string.IsNullOrWhiteSpace(plainNote) ? "دلیل لغو را وارد کنید." :
+            plainNote.Length > ActionItem.MaxNoteLength ? "یادداشت بیش از حد طولانی است." : null;
         if (_noteError is not null) return;
-        var text = _note.Trim();
+        var text = string.IsNullOrWhiteSpace(plainNote) ? null : _note.Trim();
         await MutateAsync(() => _cancelling
-            ? Api.CancelAsync(MeetingId, item.Id, item.LockVersion, text, CancellationToken.None)
-            : Api.CompleteAsync(MeetingId, item.Id, item.LockVersion, text.Length == 0 ? null : text, CancellationToken.None));
+            ? Api.CancelAsync(MeetingId, item.Id, item.LockVersion, text!, CancellationToken.None)
+            : Api.CompleteAsync(MeetingId, item.Id, item.LockVersion, text, CancellationToken.None));
     }
 
     private async Task MutateAsync(Func<Task<ApiResult<ActionItemDto>>> action)

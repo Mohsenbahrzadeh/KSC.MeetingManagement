@@ -7,7 +7,7 @@ namespace KSC.MeetingManagement.Web.Services;
 
 public sealed record IceServerDto(string[] Urls, string Username, string Credential);
 
-public sealed record JoinRoomDto(string ServerUrl, string Token, string Room, string Role, DateTimeOffset ExpiresAtUtc, IceServerDto[]? IceServers);
+public sealed record JoinRoomDto(string ServerUrl, string Token, string Room, string Role, DateTimeOffset ExpiresAtUtc, string PresenterIdentity, IceServerDto[]? IceServers);
 
 public enum JoinOutcome
 {
@@ -76,6 +76,70 @@ public sealed class RoomApiClient(IHttpClientFactory httpClientFactory)
         catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or JsonException)
         {
             return new JoinResult(JoinOutcome.Failed, null);
+        }
+    }
+
+    /// <summary>Asks the API to mute every other participant's microphone in this meeting.</summary>
+    public async Task<string?> MuteAllAsync(Guid meetingId, CancellationToken cancellationToken)
+    {
+        try
+        {
+            using var response = await httpClientFactory.CreateClient(ApiMeetingCalendarDataProvider.ClientName)
+                .PostAsync(new Uri($"api/v1/meetings/{meetingId}/room/mute-all", UriKind.Relative), content: null, cancellationToken);
+            return response.StatusCode switch
+            {
+                HttpStatusCode.NoContent => null,
+                HttpStatusCode.Forbidden or HttpStatusCode.Unauthorized => "فقط مدیر یا برگزارکنندهٔ جلسه می‌تواند میکروفون همه را بی‌صدا کند.",
+                HttpStatusCode.NotFound => "جلسه پیدا نشد.",
+                HttpStatusCode.ServiceUnavailable => "کنترل میکروفون شرکت‌کنندگان در دسترس نیست. دوباره تلاش کنید.",
+                _ => "بی‌صدا کردن شرکت‌کنندگان انجام نشد. دوباره تلاش کنید.",
+            };
+        }
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
+        {
+            return "ارتباط با سرویس جلسه برقرار نشد. دوباره تلاش کنید.";
+        }
+    }
+
+    public async Task<string?> SetScreenSharePermissionAsync(Guid meetingId, string identity, bool allowed, CancellationToken cancellationToken)
+    {
+        try
+        {
+            using var response = await httpClientFactory.CreateClient(ApiMeetingCalendarDataProvider.ClientName)
+                .PutAsJsonAsync(new Uri($"api/v1/meetings/{meetingId}/room/participants/{Uri.EscapeDataString(identity)}/screen-share-permission", UriKind.Relative), new { allowed }, cancellationToken);
+            return response.StatusCode switch
+            {
+                HttpStatusCode.NoContent => null,
+                HttpStatusCode.Forbidden or HttpStatusCode.Unauthorized => "فقط برگزارکننده می‌تواند مجوز اشتراک صفحه را مدیریت کند.",
+                HttpStatusCode.NotFound => "جلسه یا شرکت‌کننده پیدا نشد.",
+                HttpStatusCode.ServiceUnavailable => "سرویس رسانه برای تغییر مجوز در دسترس نیست.",
+                _ => "تغییر مجوز اشتراک صفحه انجام نشد.",
+            };
+        }
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
+        {
+            return "ارتباط با سرویس جلسه برقرار نشد.";
+        }
+    }
+
+    public async Task<string?> SetRecordingAsync(Guid meetingId, bool enabled, CancellationToken cancellationToken)
+    {
+        try
+        {
+            using var response = await httpClientFactory.CreateClient(ApiMeetingCalendarDataProvider.ClientName)
+                .PostAsync(new Uri($"api/v1/meetings/{meetingId}/room/recording/{(enabled ? "start" : "stop")}", UriKind.Relative), null, cancellationToken);
+            return response.StatusCode switch
+            {
+                HttpStatusCode.NoContent => null,
+                HttpStatusCode.Forbidden or HttpStatusCode.Unauthorized => "فقط برگزارکننده می‌تواند ضبط جلسه را کنترل کند.",
+                HttpStatusCode.NotFound => "جلسه یا ضبط فعال پیدا نشد.",
+                HttpStatusCode.ServiceUnavailable => "قابلیت ضبط سمت سرور پیکربندی یا در دسترس نیست.",
+                _ => "تغییر وضعیت ضبط انجام نشد.",
+            };
+        }
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
+        {
+            return "ارتباط با سرویس جلسه برقرار نشد.";
         }
     }
 }

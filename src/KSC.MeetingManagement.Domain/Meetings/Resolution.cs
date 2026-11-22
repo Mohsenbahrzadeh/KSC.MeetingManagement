@@ -102,13 +102,12 @@ public sealed class Resolution
             throw new MeetingDomainException("A reason is required to revoke a resolution.");
         }
 
-        if (reason.Trim().Length > MaxReasonLength)
-        {
-            throw new MeetingDomainException($"The reason cannot exceed {MaxReasonLength} characters.");
-        }
+        var sanitizedReason = RichTextContent.Sanitize(reason, MaxReasonLength);
+        if (string.IsNullOrWhiteSpace(RichTextContent.ToPlainText(sanitizedReason)))
+            throw new MeetingDomainException("A reason is required to revoke a resolution.");
 
         Decide(ResolutionStatus.Revoked, actorUserId, nowUtc);
-        RevocationReason = reason.Trim();
+        RevocationReason = sanitizedReason;
     }
 
     private void Decide(ResolutionStatus status, Guid actorUserId, DateTimeOffset nowUtc)
@@ -139,8 +138,9 @@ public sealed class Resolution
             throw new MeetingDomainException("Resolution text is required.");
         }
 
-        return text.Trim().Length > MaxTextLength
-            ? throw new MeetingDomainException($"Resolution text cannot exceed {MaxTextLength} characters.")
-            : text.Trim();
+        var sanitized = RichTextContent.Sanitize(text, MaxTextLength);
+        return string.IsNullOrWhiteSpace(RichTextContent.ToPlainText(sanitized))
+            ? throw new MeetingDomainException("Resolution text is required.")
+            : sanitized;
     }
 }

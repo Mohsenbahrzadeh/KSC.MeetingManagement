@@ -10,11 +10,13 @@
 <MudDialog>
     <DialogContent>
         <StatePanel State="_panel" ErrorText="@_loadError" OnRetry="LoadAsync">
-            <MudStack Spacing="2">
-                <MudTextField @bind-Value="_model.Title" Label="عنوان" Required="true" Immediate="true" MaxLength="MeetingFormModel.MaxTitleLength"
+            <div class="ksc-form-grid">
+                <MudTextField Class="ksc-form-span-2" @bind-Value="_model.Title" Label="عنوان" Required="true" Immediate="true" MaxLength="MeetingFormModel.MaxTitleLength"
                               Error="@HasError(nameof(MeetingFormModel.Title))" ErrorText="@ErrorOf(nameof(MeetingFormModel.Title))" Disabled="_saving" />
-                <MudTextField @bind-Value="_model.Description" Label="توضیحات" Lines="3" MaxLength="MeetingFormModel.MaxDescriptionLength"
-                              Error="@HasError(nameof(MeetingFormModel.Description))" ErrorText="@ErrorOf(nameof(MeetingFormModel.Description))" Disabled="_saving" />
+                <div class="ksc-form-span-2">
+                    <KscRichTextEditor @bind-Value="_model.Description" Label="توضیحات جلسه" MaxLength="MeetingFormModel.MaxDescriptionLength"
+                                       Error="@ErrorOf(nameof(MeetingFormModel.Description))" Disabled="_saving" />
+                </div>
                 <MudSelect T="MeetingMode" @bind-Value="_model.Mode" Label="نوع برگزاری" Disabled="_saving">
                     <MudSelectItem Value="MeetingMode.InPerson">حضوری</MudSelectItem>
                     <MudSelectItem Value="MeetingMode.Online">آنلاین</MudSelectItem>
@@ -29,16 +31,16 @@
                     }
                 </div>
 
-                <MudStack Row="true" Spacing="2">
+                <div class="ksc-form-time-row ksc-form-span-2">
                     <MudTimePicker @bind-Time="_model.StartTime" Label="ساعت شروع" Editable="true" AmPm="false" Disabled="_saving"
                                    Error="@HasError(nameof(MeetingFormModel.StartTime))" ErrorText="@ErrorOf(nameof(MeetingFormModel.StartTime))" />
                     <MudTimePicker @bind-Time="_model.EndTime" Label="ساعت پایان" Editable="true" AmPm="false" Disabled="_saving"
                                    Error="@HasError(nameof(MeetingFormModel.EndTime))" ErrorText="@ErrorOf(nameof(MeetingFormModel.EndTime))" />
-                </MudStack>
+                </div>
 
                 @if (_serverError is not null)
                 {
-                    <MudAlert Severity="Severity.Error" Variant="Variant.Outlined" role="alert">
+                    <MudAlert Class="ksc-form-span-2" Severity="Severity.Error" Variant="Variant.Outlined" role="alert">
                         @_serverError
                         @if (_canForce)
                         {
@@ -46,7 +48,7 @@
                         }
                     </MudAlert>
                 }
-            </MudStack>
+            </div>
         </StatePanel>
     </DialogContent>
     <DialogActions>

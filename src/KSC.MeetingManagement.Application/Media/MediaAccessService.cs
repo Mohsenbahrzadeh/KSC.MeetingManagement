@@ -170,7 +170,7 @@ public sealed class MediaAccessService(
             displayName ?? string.Empty,
             role,
             TimeSpan.FromMinutes(Math.Clamp(options.TokenLifetimeMinutes, 1, MediaOptions.MaxLifetimeMinutes))));
-        return new MediaJoinResult(MediaJoinOutcome.Granted, token);
+        return new MediaJoinResult(MediaJoinOutcome.Granted, token with { PresenterIdentity = $"u-{meeting.OrganizerId:N}" });
     }
 
     private MediaJoinOutcome Check(Meeting meeting)

@@ -154,6 +154,20 @@ public sealed class CalendarComponentTests : BunitContext
     }
 
     [Fact]
+    public void Popup_has_direct_month_and_year_navigation_controls()
+    {
+        var cut = RenderPicker(JalaliDate.Create(1404, 1, 5), _ => { });
+        cut.Find(".ksc-datepicker-toggle").Click();
+
+        Assert.Equal("1404", cut.Find(".ksc-datepicker-year-input").GetAttribute("value"));
+        cut.Find(".ksc-datepicker-month-select").Change("5");
+        Assert.Equal("مرداد ۱۴۰۴", cut.Find(".ksc-datepicker-title").TextContent.Trim());
+
+        cut.Find(".ksc-datepicker-year-input").Change("1405");
+        Assert.Equal("مرداد ۱۴۰۵", cut.Find(".ksc-datepicker-title").TextContent.Trim());
+    }
+
+    [Fact]
     public void Escape_closes_the_popup_and_clear_is_hidden_for_required_fields()
     {
         var cut = RenderPicker(JalaliDate.Create(1404, 1, 5), _ => { }, required: true);

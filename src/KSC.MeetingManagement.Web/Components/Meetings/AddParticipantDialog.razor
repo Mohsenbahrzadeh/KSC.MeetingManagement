@@ -9,8 +9,8 @@
 <MudDialog>
     <DialogContent>
         <StatePanel State="_panel" ErrorText="@_loadError" OnRetry="LoadAsync" EmptyText="عضو دیگری برای افزودن نیست.">
-            <MudStack Spacing="2">
-                <MudSelect T="Guid?" @bind-Value="_userId" Label="عضو سازمان" Required="true" Disabled="_saving"
+            <div class="ksc-form-grid">
+                <MudSelect Class="ksc-form-span-2" T="Guid?" @bind-Value="_userId" Label="عضو سازمان" Required="true" Disabled="_saving"
                            Error="@(_selectError is not null)" ErrorText="@_selectError">
                     @foreach (var m in _candidates)
                     {
@@ -19,7 +19,7 @@
                 </MudSelect>
                 @if (_serverError is not null)
                 {
-                    <MudAlert Severity="Severity.Error" Variant="Variant.Outlined" role="alert">
+                    <MudAlert Class="ksc-form-span-2" Severity="Severity.Error" Variant="Variant.Outlined" role="alert">
                         @_serverError
                         @if (_canForce)
                         {
@@ -27,7 +27,7 @@
                         }
                     </MudAlert>
                 }
-            </MudStack>
+            </div>
         </StatePanel>
     </DialogContent>
     <DialogActions>

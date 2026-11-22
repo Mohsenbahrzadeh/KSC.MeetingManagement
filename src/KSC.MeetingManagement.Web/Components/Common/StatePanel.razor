@@ -2,9 +2,9 @@
 @switch (State)
 {
     case PanelState.Loading:
-        <div class="d-flex align-center gap-2 py-4" role="status">
-            <MudProgressCircular Size="Size.Small" Indeterminate="true" />
-            <MudText>@LoadingText</MudText>
+        <div class="ksc-state-loading" role="status">
+            <MudProgressCircular Size="Size.Small" Indeterminate="true" Color="Color.Primary" />
+            <MudText Typo="Typo.body2">@LoadingText</MudText>
         </div>
         break;
     case PanelState.Error:
@@ -17,9 +17,9 @@
         </MudAlert>
         break;
     case PanelState.Empty:
-        <div class="d-flex flex-column align-center py-6" role="status">
-            <MudIcon Icon="@EmptyIcon" Color="Color.Default" Size="Size.Large" />
-            <MudText Class="mt-2">@EmptyText</MudText>
+        <div class="ksc-state-empty" role="status">
+            <span class="ksc-state-empty-icon"><MudIcon Icon="@EmptyIcon" Color="Color.Default" Size="Size.Medium" /></span>
+            <MudText Typo="Typo.body2">@EmptyText</MudText>
             @if (EmptyAction is not null)
             {
                 <div class="mt-2">@EmptyAction</div>

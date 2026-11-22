@@ -35,10 +35,15 @@ public sealed class RoomTests : BunitContext, IAsyncLifetime
         {
             owner._joinCalls++;
             var response = new HttpResponseMessage(owner._joinStatus);
+            if (request.RequestUri?.AbsolutePath.EndsWith("/mute-all", StringComparison.Ordinal) == true)
+            {
+                return Task.FromResult(new HttpResponseMessage(HttpStatusCode.NoContent));
+            }
+
             if (owner._joinStatus == HttpStatusCode.OK)
             {
                 response.Content = new StringContent(
-                    """{"serverUrl":"wss://media.test","token":"t","room":"r","role":"Host","expiresAtUtc":"2030-01-01T00:00:00Z","iceServers":[{"urls":["turn:t.test:3478"],"username":"u","credential":"c"}]}""",
+                    """{"serverUrl":"wss://media.test","token":"t","room":"r","role":"Host","expiresAtUtc":"2030-01-01T00:00:00Z","presenterIdentity":"u-host","iceServers":[{"urls":["turn:t.test:3478"],"username":"u","credential":"c"}]}""",
                     Encoding.UTF8,
                     "application/json");
             }
@@ -180,8 +185,8 @@ public sealed class RoomTests : BunitContext, IAsyncLifetime
 
         cut.InvokeAsync(() => cut.Instance.OnParticipants(
         [
-            new Room.RoomParticipant("local-user", "سارا", true),
-            new Room.RoomParticipant("remote-user", "رضا", false)
+            new Room.RoomParticipant("local-user", "سارا", true, true),
+            new Room.RoomParticipant("remote-user", "رضا", false, false)
         ]));
 
         cut.WaitForAssertion(() =>
@@ -189,8 +194,26 @@ public sealed class RoomTests : BunitContext, IAsyncLifetime
             var roster = cut.Find("[aria-label='شرکت‌کنندگان جلسه']");
             Assert.Contains("سارا", roster.TextContent, StringComparison.Ordinal);
             Assert.Contains("رضا", roster.TextContent, StringComparison.Ordinal);
-            Assert.Contains("2 نفر در اتاق", roster.TextContent, StringComparison.Ordinal);
+            Assert.Contains("سارا", roster.TextContent, StringComparison.Ordinal);
+            Assert.Contains("میکروفون روشن", roster.TextContent, StringComparison.Ordinal);
+            Assert.Contains("بی‌صدا", roster.TextContent, StringComparison.Ordinal);
         });
+    }
+
+    [Fact]
+    public void The_participant_list_can_be_collapsed_and_reopened_from_the_room_toolbar()
+    {
+        SetupModule();
+        var cut = Render<Room>(p => p.Add(c => c.MeetingId, MeetingId));
+        cut.WaitForAssertion(() => Assert.NotEmpty(cut.FindAll("video.ksc-preview")));
+        cut.FindAll("button").First(b => b.TextContent.Contains("ورود به جلسه", StringComparison.Ordinal)).Click();
+        cut.WaitForAssertion(() => Assert.NotEmpty(cut.FindAll(".ksc-room-roster-toggle")));
+
+        cut.Find(".ksc-room-roster-toggle").Click();
+        cut.WaitForAssertion(() => Assert.Empty(cut.FindAll("[aria-label='شرکت‌کنندگان جلسه']")));
+
+        cut.Find(".ksc-room-roster-toggle").Click();
+        cut.WaitForAssertion(() => Assert.Single(cut.FindAll("[aria-label='شرکت‌کنندگان جلسه']")));
     }
 
     [Fact]
@@ -203,10 +226,41 @@ public sealed class RoomTests : BunitContext, IAsyncLifetime
         cut.WaitForAssertion(() => Assert.NotEmpty(cut.FindAll("[role=toolbar]")));
 
         cut.InvokeAsync(() => cut.Instance.OnScreenShare(true));
-        cut.WaitForAssertion(() => Assert.Contains(cut.FindAll("button"), b => b.GetAttribute("aria-pressed") == "true"));
+        cut.WaitForAssertion(() => Assert.Contains(cut.FindAll("button"), b => b.TextContent.Contains("توقف اشتراک", StringComparison.Ordinal)));
 
         cut.InvokeAsync(() => cut.Instance.OnScreenShare(false));
-        cut.WaitForAssertion(() => Assert.Contains(cut.FindAll("button"), b => b.GetAttribute("aria-pressed") == "false"));
+        cut.WaitForAssertion(() => Assert.Contains(cut.FindAll("button"), b => b.TextContent.Contains("اشتراک صفحه", StringComparison.Ordinal)));
+    }
+
+    [Fact]
+    public async Task The_mute_all_client_calls_the_manager_endpoint()
+    {
+        var factory = new CapturingFactory();
+        var client = new RoomApiClient(factory);
+
+        var error = await client.MuteAllAsync(MeetingId, CancellationToken.None);
+
+        Assert.Null(error);
+        Assert.EndsWith($"/api/v1/meetings/{MeetingId}/room/mute-all", factory.Handler.LastRequest!.RequestUri!.AbsolutePath, StringComparison.Ordinal);
+        Assert.Equal(HttpMethod.Post, factory.Handler.LastRequest.Method);
+    }
+
+    private sealed class CapturingFactory : IHttpClientFactory
+    {
+        public CapturingHandler Handler { get; } = new();
+
+        public HttpClient CreateClient(string name) => new(Handler) { BaseAddress = new Uri("https://api.example.test/") };
+    }
+
+    private sealed class CapturingHandler : HttpMessageHandler
+    {
+        public HttpRequestMessage? LastRequest { get; private set; }
+
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            LastRequest = request;
+            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.NoContent));
+        }
     }
 
     [Fact]
@@ -241,8 +295,9 @@ public sealed class RoomTests : BunitContext, IAsyncLifetime
         join.Click();
         cut.WaitForAssertion(() => Assert.Contains(module.Invocations, i => i.Identifier == "connect"));
         var connect = module.Invocations.Last(i => i.Identifier == "connect");
-        Assert.Equal(false, connect.Arguments[5]);
-        Assert.Equal(false, connect.Arguments[6]);
+        Assert.Equal(false, connect.Arguments[7]);
+        Assert.Equal(false, connect.Arguments[8]);
+        Assert.Equal("u-host", connect.Arguments[9]);
     }
 
     private static (bool Video, bool Audio) LastPreviewRequest(BunitJSModuleInterop module)

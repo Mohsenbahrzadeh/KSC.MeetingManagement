@@ -9,7 +9,7 @@ public enum MediaRole
     /// <summary>Invited internal participant: publish and subscribe.</summary>
     Participant = 2,
 
-    /// <summary>External guest: publish and subscribe only; no data messages and no administration.</summary>
+    /// <summary>External guest: publish and subscribe only; no whiteboard data messages or administration.</summary>
     Guest = 3,
 
     /// <summary>Can only watch and listen.</summary>
@@ -19,7 +19,7 @@ public enum MediaRole
 /// <summary>Request to sign a token. Identity and room are decided by the caller after it has authorised the person.</summary>
 public sealed record MediaTokenRequest(string Room, string Identity, string DisplayName, MediaRole Role, TimeSpan Lifetime);
 
-public sealed record MediaToken(string Token, string ServerUrl, string Room, string Identity, MediaRole Role, DateTimeOffset ExpiresAtUtc);
+public sealed record MediaToken(string Token, string ServerUrl, string Room, string Identity, MediaRole Role, DateTimeOffset ExpiresAtUtc, string PresenterIdentity);
 
 /// <summary>Port that signs short-lived room tokens. The signing secret never leaves the implementation.</summary>
 public interface IMediaTokenService
@@ -60,7 +60,12 @@ public sealed class MediaOptions
     /// <summary>Address of the media server's HTTP API when it differs from the public one; defaults to the public address with http(s).</summary>
     public string? ApiUrl { get; set; }
 
+    /// <summary>Absolute directory inside the Egress container where meeting recordings are written. Empty disables recording.</summary>
+    public string? RecordingPath { get; set; }
+
     public bool IsComplete =>
         !string.IsNullOrWhiteSpace(ServerUrl) && !string.IsNullOrWhiteSpace(ApiKey)
         && ApiSecret is { Length: >= MinSecretLength };
+
+    public bool RecordingConfigured => IsComplete && !string.IsNullOrWhiteSpace(RecordingPath);
 }

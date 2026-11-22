@@ -1,5 +1,6 @@
 using KSC.MeetingManagement.Application.Meetings;
 using KSC.MeetingManagement.Application.Tenants;
+using KSC.MeetingManagement.Domain.Meetings;
 using Microsoft.EntityFrameworkCore;
 
 namespace KSC.MeetingManagement.Infrastructure.Persistence;
@@ -100,7 +101,7 @@ public sealed class EfMeetingSearchRepository(KscDbContext db, ITenantContext te
         documents.AddRange(minutes.Where(item => item.Content is not null).Select(item =>
         {
             var meeting = meetingById[item.MeetingId];
-            return new MeetingSearchDocument(item.TenantId, meeting.Id, meeting.Title, meeting.Number, item.Content, "minutes", meeting.Id,
+            return new MeetingSearchDocument(item.TenantId, meeting.Id, meeting.Title, meeting.Number, RichTextContent.ToPlainText(item.Content), "minutes", meeting.Id,
                 "صورت‌جلسهٔ مصوب", meeting.StartUtc ?? DateTimeOffset.MinValue);
         }));
         documents.AddRange(attachments.Select(item =>

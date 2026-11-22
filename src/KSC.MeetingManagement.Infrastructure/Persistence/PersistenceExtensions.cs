@@ -43,6 +43,7 @@ public static class PersistenceExtensions
             LobbyForGuests = !string.Equals(configuration["Media:LobbyForGuests"], "false", StringComparison.OrdinalIgnoreCase),
             LobbyForMembers = string.Equals(configuration["Media:LobbyForMembers"], "true", StringComparison.OrdinalIgnoreCase),
             ApiUrl = configuration["Media:ApiUrl"],
+            RecordingPath = configuration["Media:RecordingPath"],
         };
 
         services.TryAddSingleton(options);

@@ -98,11 +98,14 @@ public class LiveKitRoomControlTests
     {
         public List<(HttpRequestMessage Request, string Body)> Calls { get; } = [];
 
+        public string ResponseBody { get; set; } = "{}";
+        public Queue<string> ResponseBodies { get; } = new();
+
         protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
         {
             var body = request.Content is null ? string.Empty : await request.Content.ReadAsStringAsync(cancellationToken);
             Calls.Add((request, body));
-            return new HttpResponseMessage(status) { Content = new StringContent("{}") };
+            return new HttpResponseMessage(status) { Content = new StringContent(ResponseBodies.Count > 0 ? ResponseBodies.Dequeue() : ResponseBody) };
         }
     }
 
@@ -116,6 +119,8 @@ public class LiveKitRoomControlTests
     public async Task Closing_a_room_posts_the_twirp_call_with_a_short_admin_token_limited_to_that_room()
     {
         var stub = new Stub(HttpStatusCode.OK);
+        stub.ResponseBodies.Enqueue("{\"participants\":[{\"identity\":\"u-member\"}]}");
+        stub.ResponseBodies.Enqueue("{}");
         var control = new LiveKitRoomControl(new HttpClient(stub), Options(), new Clock());
 
         await control.CloseRoomAsync("ksc-room-1", CancellationToken.None);
@@ -154,6 +159,55 @@ public class LiveKitRoomControlTests
     }
 
     [Fact]
+    public async Task Screen_share_permission_uses_room_service_and_only_screen_share_source_changes()
+    {
+        var stub = new Stub(HttpStatusCode.OK);
+        stub.ResponseBodies.Enqueue("{\"participants\":[{\"identity\":\"u-member\"}]}");
+        stub.ResponseBodies.Enqueue("{}");
+        var control = new LiveKitRoomControl(new HttpClient(stub), Options(), new Clock());
+
+        await control.SetScreenSharePermissionAsync("ksc-room-1", "u-member", true, CancellationToken.None);
+
+        Assert.Equal(2, stub.Calls.Count);
+        var (request, body) = stub.Calls[1];
+        Assert.EndsWith("/twirp/livekit.RoomService/UpdateParticipant", request.RequestUri!.AbsolutePath, StringComparison.Ordinal);
+        using var json = JsonDocument.Parse(body);
+        Assert.Equal("u-member", json.RootElement.GetProperty("identity").GetString());
+        var sources = json.RootElement.GetProperty("permission").GetProperty("canPublishSources");
+        Assert.Contains(sources.EnumerateArray(), source => source.GetString() == "SCREEN_SHARE");
+        Assert.DoesNotContain(sources.EnumerateArray(), source => source.GetString() == "SCREEN_SHARE_AUDIO");
+    }
+
+    [Fact]
+    public async Task Muting_everyone_lists_published_audio_tracks_and_mutes_remote_participants_only()
+    {
+        var stub = new Stub(HttpStatusCode.OK)
+        {
+            ResponseBody = """
+                {"participants":[
+                  {"identity":"u-host","tracks":[{"sid":"host-audio","type":"AUDIO"}]},
+                  {"identity":"u-member","tracks":[{"sid":"member-audio","type":"AUDIO"},{"sid":"member-video","type":"VIDEO"}]},
+                  {"identity":"u-listener","tracks":[]}
+                ]}
+                """
+        };
+        var control = new LiveKitRoomControl(new HttpClient(stub), Options(), new Clock());
+
+        await control.MuteAllParticipantsAsync("ksc-room-1", "u-host", CancellationToken.None);
+
+        Assert.Equal(2, stub.Calls.Count);
+        Assert.EndsWith("/twirp/livekit.RoomService/ListParticipants", stub.Calls[0].Request.RequestUri!.AbsolutePath, StringComparison.Ordinal);
+        var (muteRequest, muteBody) = stub.Calls[1];
+        Assert.EndsWith("/twirp/livekit.RoomService/MutePublishedTrack", muteRequest.RequestUri!.AbsolutePath, StringComparison.Ordinal);
+        using var body = JsonDocument.Parse(muteBody);
+        var json = body.RootElement;
+        Assert.Equal("ksc-room-1", json.GetProperty("room").GetString());
+        Assert.Equal("u-member", json.GetProperty("identity").GetString());
+        Assert.Equal("member-audio", json.GetProperty("track_sid").GetString());
+        Assert.True(json.GetProperty("muted").GetBoolean());
+    }
+
+    [Fact]
     public async Task A_missing_room_or_participant_is_not_an_error_but_server_errors_are()
     {
         var notFound = new LiveKitRoomControl(new HttpClient(new Stub(HttpStatusCode.NotFound)), Options(), new Clock());
@@ -163,6 +217,17 @@ public class LiveKitRoomControlTests
         await notFound.CloseRoomAsync("r", CancellationToken.None);
         await Assert.ThrowsAsync<HttpRequestException>(() => broken.CloseRoomAsync("r", CancellationToken.None));
         await Assert.ThrowsAsync<HttpRequestException>(() => unauthorized.RemoveParticipantAsync("r", "u-1", CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task A_missing_room_during_mute_all_is_a_no_op()
+    {
+        var stub = new Stub(HttpStatusCode.NotFound);
+        var control = new LiveKitRoomControl(new HttpClient(stub), Options(), new Clock());
+
+        await control.MuteAllParticipantsAsync("r", "u-host", CancellationToken.None);
+
+        Assert.Single(stub.Calls);
     }
 
     [Fact]

@@ -6,33 +6,69 @@
 
 <PageTitle>ورود | مدیریت جلسات</PageTitle>
 
-<section class="ksc-login">
-    <MudPaper Class="ksc-card pa-6" Elevation="0">
-        <h1 class="ksc-page-title" tabindex="-1">ورود به سامانه</h1>
-        <p class="ksc-page-sub">با ایمیل و گذرواژهٔ خود وارد شوید.</p>
+<section class="ksc-login-page" dir="rtl">
+    <div class="ksc-login-shell">
+        <aside class="ksc-login-visual" aria-label="ابزارهای مدیریت جلسه">
+            <div class="ksc-login-visual-top">
+                <span class="ksc-login-brand-mark" aria-hidden="true"><MudIcon Icon="@Icons.Material.Filled.Groups" /></span>
+                <span>مدیریت جلسات</span>
+            </div>
 
-        @if (_error is not null)
-        {
-            <MudAlert Severity="Severity.Error" Class="mb-4" role="alert">@_error</MudAlert>
-        }
+            <div class="ksc-login-message">
+                <span class="ksc-login-kicker"><span></span> فضای کاری سازمان</span>
+                <h2>از دستور جلسه<br /><span>تا پیگیری تصمیم‌ها.</span></h2>
+                <p>برنامه‌ریزی جلسه، ثبت صورت‌جلسه و دنبال‌کردن مصوبات در یک فضای کاری مشترک.</p>
+            </div>
 
-        <EditForm Model="_model" OnValidSubmit="SignInAsync" FormName="login">
-            <DataAnnotationsValidator />
-            <MudTextField @bind-Value="_model.Email" Label="ایمیل" InputType="InputType.Email" Variant="Variant.Outlined"
-                          Immediate="true" AutoFocus="true" Class="mb-3" Margin="Margin.Dense"
-                          For="() => _model.Email" Disabled="_busy" Adornment="Adornment.End" AdornmentIcon="@Icons.Material.Filled.Email" />
-            <MudTextField @bind-Value="_model.Password" Label="گذرواژه" InputType="InputType.Password" Variant="Variant.Outlined"
-                          Immediate="true" Class="mb-4" Margin="Margin.Dense"
-                          For="() => _model.Password" Disabled="_busy" Adornment="Adornment.End" AdornmentIcon="@Icons.Material.Filled.Lock" />
-            <MudButton ButtonType="ButtonType.Submit" Variant="Variant.Filled" Color="Color.Primary" Size="Size.Large" FullWidth="true" Disabled="_busy">
-                @if (_busy)
+            <div class="ksc-login-art" aria-hidden="true">
+                <div class="ksc-login-feature"><span><MudIcon Icon="@Icons.Material.Filled.CalendarMonth" /></span><strong>برنامه‌ریزی</strong><small>تقویم و زمان‌بندی جلسه‌ها</small></div>
+                <div class="ksc-login-feature"><span><MudIcon Icon="@Icons.Material.Filled.Description" /></span><strong>مستندسازی</strong><small>دستور جلسه و صورت‌جلسه</small></div>
+                <div class="ksc-login-feature"><span><MudIcon Icon="@Icons.Material.Filled.TaskAlt" /></span><strong>پیگیری</strong><small>مصوبات و اقدامات مسئولان</small></div>
+            </div>
+
+            <div class="ksc-login-visual-foot"><span></span> ورود امن به فضای کاری سازمان</div>
+        </aside>
+
+        <div class="ksc-login-form-panel">
+            <div class="ksc-login-form-inner">
+                <div class="ksc-login-mobile-mark" aria-hidden="true"><MudIcon Icon="@Icons.Material.Filled.Groups" /></div>
+                <span class="ksc-login-welcome">حساب سازمانی</span>
+                <h1 tabindex="-1">ورود به حساب کاربری</h1>
+                <p class="ksc-login-intro">برای دسترسی به جلسه‌ها و ابزارهای کاری، وارد حساب خود شوید.</p>
+
+                @if (_error is not null)
                 {
-                    <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="ms-2" />
+                    <MudAlert Severity="Severity.Error" Class="ksc-login-error" role="alert">@_error</MudAlert>
                 }
-                ورود
-            </MudButton>
-        </EditForm>
-    </MudPaper>
+
+                <EditForm Model="_model" OnValidSubmit="SignInAsync" FormName="login" class="ksc-login-form">
+                    <DataAnnotationsValidator />
+                    <MudTextField @bind-Value="_model.Email" Label="نشانی ایمیل" InputType="InputType.Email" Placeholder="you@example.com" Variant="Variant.Outlined"
+                                  Immediate="true" AutoFocus="true" Class="ksc-login-field" Margin="Margin.Dense"
+                                  For="() => _model.Email" Disabled="_busy" Adornment="Adornment.End" AdornmentIcon="@Icons.Material.Filled.Email"
+                                  autocomplete="username" />
+                    <MudTextField @bind-Value="_model.Password" Label="گذرواژه" InputType="InputType.Password" Placeholder="گذرواژهٔ حساب خود را وارد کنید" Variant="Variant.Outlined"
+                                  Class="ksc-login-field" Margin="Margin.Dense" For="() => _model.Password" Disabled="_busy"
+                                  Adornment="Adornment.End" AdornmentIcon="@Icons.Material.Filled.Lock" autocomplete="current-password" />
+                    <MudButton ButtonType="ButtonType.Submit" Variant="Variant.Filled" Color="Color.Primary" Size="Size.Large"
+                               FullWidth="true" Disabled="_busy" Class="ksc-login-submit">
+                        @if (_busy)
+                        {
+                            <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="ms-2" />
+                        }
+                        ورود به سامانه
+                        @if (!_busy)
+                        {
+                            <MudIcon Icon="@Icons.Material.Filled.ArrowBack" Size="Size.Small" Class="ksc-login-submit-icon" />
+                        }
+                    </MudButton>
+                </EditForm>
+
+                <div class="ksc-login-security"><MudIcon Icon="@Icons.Material.Filled.Lock" Size="Size.Small" /> ارتباط با فضای کاری شما محافظت می‌شود</div>
+            </div>
+            <div class="ksc-login-copyright">© مدیریت جلسات <span>·</span> ساخته‌شده برای همکاری بهتر</div>
+        </div>
+    </div>
 </section>
 
 @code {

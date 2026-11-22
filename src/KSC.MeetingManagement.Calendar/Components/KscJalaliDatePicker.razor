@@ -11,11 +11,13 @@
                inputmode="numeric"
                autocomplete="off"
                dir="ltr"
-               placeholder="@PersianText.Format(JalaliDate.Create(1404, 1, 1))"
+               placeholder="۱۴۰۴/۰۱/۰۱"
                value="@_text"
                disabled="@Disabled"
+               aria-label="@(Label ?? "تاریخ شمسی")"
                aria-invalid="@(_error is null ? null : "true")"
                aria-describedby="@(_error is null ? null : _errorId)"
+               @oninput="OnTyping"
                @onchange="OnInputChanged" />
         <button type="button"
                 class="ksc-datepicker-toggle"
@@ -24,7 +26,7 @@
                 aria-expanded="@(_open ? "true" : "false")"
                 disabled="@Disabled"
                 @onclick="Toggle">
-            <span aria-hidden="true">▾</span>
+             <svg aria-hidden="true" viewBox="0 0 24 24" focusable="false"><path d="M7 2v3M17 2v3M4 9h16M5 4h14a1 1 0 0 1 1 1v15H4V5a1 1 0 0 1 1-1Zm3 9h2m2 0h2m2 0h1m-9 4h2m2 0h2" /></svg>
         </button>
     </div>
     @if (_error is not null)
@@ -33,13 +35,18 @@
     }
     @if (_open)
     {
-        <div class="ksc-datepicker-popup" role="dialog" aria-label="تقویم">
-            <div class="ksc-datepicker-head">
-                <button type="button" class="ksc-datepicker-nav" aria-label="سال قبل" disabled="@(!CanShow(_viewYear - 1))" @onclick="() => MoveMonth(-12)">«</button>
+        <div class="ksc-datepicker-popup" role="dialog" aria-label="تقویم شمسی">
+            <div class="ksc-datepicker-head" @onclick:stopPropagation="true">
                 <button type="button" class="ksc-datepicker-nav" aria-label="ماه قبل" disabled="@(!CanShow(_viewYear, _viewMonth - 1))" @onclick="() => MoveMonth(-1)">›</button>
-                <span class="ksc-datepicker-title" aria-live="polite">@Calendar.MonthName(_viewMonth) @PersianText.Digits(_viewYear)</span>
+                <select class="ksc-datepicker-month-select" aria-label="ماه" value="@_viewMonth" @onchange="OnMonthChanged">
+                    @for (var month = 1; month <= 12; month++)
+                    {
+                        <option value="@month">@Calendar.MonthName(month)</option>
+                    }
+                </select>
+                <span class="ksc-datepicker-title ksc-visually-hidden" aria-live="polite">@Calendar.MonthName(_viewMonth) @PersianText.Digits(_viewYear)</span>
+                <input class="ksc-datepicker-year-input" type="number" inputmode="numeric" aria-label="سال" min="@JalaliDate.MinYear" max="@JalaliDate.MaxYear" value="@_viewYear" @onchange="OnYearChanged" />
                 <button type="button" class="ksc-datepicker-nav" aria-label="ماه بعد" disabled="@(!CanShow(_viewYear, _viewMonth + 1))" @onclick="() => MoveMonth(1)">‹</button>
-                <button type="button" class="ksc-datepicker-nav" aria-label="سال بعد" disabled="@(!CanShow(_viewYear + 1))" @onclick="() => MoveMonth(12)">»</button>
             </div>
             <table class="ksc-datepicker-grid" role="grid">
                 <thead>
@@ -175,6 +182,17 @@
         await SetValue(parsed);
     }
 
+    private async Task OnTyping(ChangeEventArgs args)
+    {
+        _text = args.Value?.ToString() ?? string.Empty;
+        _error = null;
+        if (JalaliDate.TryParse(_text, out var parsed) && IsAllowed(parsed))
+        {
+            _text = PersianText.Format(parsed);
+            await SetValue(parsed);
+        }
+    }
+
     private async Task Pick(JalaliDate day)
     {
         if (!IsAllowed(day))
@@ -237,6 +255,18 @@
             _viewYear = year;
             _viewMonth = (index % 12) + 1;
         }
+    }
+
+    private void OnMonthChanged(ChangeEventArgs args)
+    {
+        if (int.TryParse(args.Value?.ToString(), out var month) && month is >= 1 and <= 12)
+            _viewMonth = month;
+    }
+
+    private void OnYearChanged(ChangeEventArgs args)
+    {
+        if (int.TryParse(args.Value?.ToString(), out var year) && CanShow(year))
+            _viewYear = year;
     }
 
     private static bool CanShow(int year, int month = 1)

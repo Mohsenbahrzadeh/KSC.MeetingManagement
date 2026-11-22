@@ -243,7 +243,9 @@ public sealed class RoomApiTests : IClassFixture<WebApplicationFactory<Program>>
         Assert.Equal($"g-{invite.Participant.Id:N}", claims.GetProperty("sub").GetString());
         Assert.Equal("مهمان", claims.GetProperty("name").GetString());
         Assert.False(claims.GetProperty("video").GetProperty("roomAdmin").GetBoolean());
-        Assert.False(claims.GetProperty("video").GetProperty("canPublishData").GetBoolean());
+        Assert.True(claims.GetProperty("video").GetProperty("canPublishData").GetBoolean());
+        var sources = claims.GetProperty("video").GetProperty("canPublishSources");
+        Assert.DoesNotContain(sources.EnumerateArray(), source => source.GetString() == "screen_share");
     }
 
     [Fact]

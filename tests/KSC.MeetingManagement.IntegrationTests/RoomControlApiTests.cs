@@ -43,6 +43,7 @@ public sealed class RoomControlApiTests : IClassFixture<WebApplicationFactory<Pr
             b.UseSetting("Media:ServerUrl", "wss://media.example.org");
             b.UseSetting("Media:ApiKey", "APIkey1");
             b.UseSetting("Media:ApiSecret", Secret);
+            b.UseSetting("Media:RecordingPath", "/recordings");
             b.ConfigureServices(s =>
             {
                 s.UseInMemoryKscDatabase(Guid.NewGuid().ToString());
@@ -76,6 +77,12 @@ public sealed class RoomControlApiTests : IClassFixture<WebApplicationFactory<Pr
 
         public List<(string Room, string Identity)> Removed { get; } = [];
 
+        public List<(string Room, string ExceptIdentity)> MutedAll { get; } = [];
+
+        public List<(string Room, string Identity, bool Allowed)> ScreenSharePermissions { get; } = [];
+
+        public List<(string Room, bool Enabled)> Recordings { get; } = [];
+
         public bool Fail { get; set; }
 
         public Task CloseRoomAsync(string room, CancellationToken cancellationToken)
@@ -88,6 +95,24 @@ public sealed class RoomControlApiTests : IClassFixture<WebApplicationFactory<Pr
         {
             Removed.Add((room, identity));
             return Fail ? throw new HttpRequestException("media server down") : Task.CompletedTask;
+        }
+
+        public Task MuteAllParticipantsAsync(string room, string exceptIdentity, CancellationToken cancellationToken)
+        {
+            MutedAll.Add((room, exceptIdentity));
+            return Fail ? throw new HttpRequestException("media server down") : Task.CompletedTask;
+        }
+
+        public Task SetScreenSharePermissionAsync(string room, string identity, bool allowed, CancellationToken cancellationToken)
+        {
+            ScreenSharePermissions.Add((room, identity, allowed));
+            return Fail ? throw new HttpRequestException("media server down") : Task.CompletedTask;
+        }
+
+        public Task<bool> SetRecordingAsync(string room, bool enabled, string? recordingPath, CancellationToken cancellationToken)
+        {
+            Recordings.Add((room, enabled));
+            return Fail ? throw new HttpRequestException("media server down") : Task.FromResult(true);
         }
     }
 
@@ -245,6 +270,60 @@ public sealed class RoomControlApiTests : IClassFixture<WebApplicationFactory<Pr
         Assert.Equal(HttpStatusCode.Forbidden, (await Send(HttpMethod.Post, remove, _member)).StatusCode);
         Assert.Equal(HttpStatusCode.Unauthorized, (await Send(HttpMethod.Post, admit, null)).StatusCode);
         Assert.Equal(HttpStatusCode.Forbidden, (await Send(HttpMethod.Post, $"/api/v1/meetings/{meeting.Id}/end", _member, new { expectedVersion = 1 })).StatusCode);
+    }
+
+    [Fact]
+    public async Task Only_meeting_managers_can_mute_everyone_and_the_host_is_excluded()
+    {
+        var meeting = await Meeting();
+        var path = Url(meeting.Id, "mute-all");
+
+        Assert.Equal(HttpStatusCode.Forbidden, (await Send(HttpMethod.Post, path, _member)).StatusCode);
+        Assert.Equal(HttpStatusCode.Unauthorized, (await Send(HttpMethod.Post, path, null)).StatusCode);
+
+        var response = await Send(HttpMethod.Post, path, _host);
+
+        Assert.Equal(HttpStatusCode.NoContent, response.StatusCode);
+        Assert.Equal((MediaAccessService.RoomName(_tenant.Id, meeting.Id), $"u-{_host:N}"), Assert.Single(_control.MutedAll));
+    }
+
+    [Fact]
+    public async Task A_media_server_error_when_muting_all_is_reported_as_unavailable()
+    {
+        var meeting = await Meeting();
+        _control.Fail = true;
+
+        var response = await Send(HttpMethod.Post, Url(meeting.Id, "mute-all"), _host);
+
+        Assert.Equal(HttpStatusCode.ServiceUnavailable, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task Only_the_meeting_organizer_can_grant_screen_share_permission()
+    {
+        var meeting = await Meeting();
+        await Send(HttpMethod.Post, $"/api/v1/meetings/{meeting.Id}/participants/internal", _host, new { userId = _member });
+        _clock.Now = _start;
+        await Send(HttpMethod.Post, Url(meeting.Id, "join"), _member, new { });
+        var identity = $"u-{_member:N}";
+        var path = Url(meeting.Id, $"participants/{identity}/screen-share-permission");
+
+        Assert.Equal(HttpStatusCode.Forbidden, (await Send(HttpMethod.Put, path, _member, new { allowed = true })).StatusCode);
+        Assert.Equal(HttpStatusCode.NoContent, (await Send(HttpMethod.Put, path, _host, new { allowed = true })).StatusCode);
+        Assert.Equal((MediaAccessService.RoomName(_tenant.Id, meeting.Id), identity, true), Assert.Single(_control.ScreenSharePermissions));
+    }
+
+    [Fact]
+    public async Task Only_the_meeting_organizer_can_start_or_stop_recording()
+    {
+        var meeting = await Meeting();
+        var start = Url(meeting.Id, "recording/start");
+        var stop = Url(meeting.Id, "recording/stop");
+
+        Assert.Equal(HttpStatusCode.Forbidden, (await Send(HttpMethod.Post, start, _member)).StatusCode);
+        Assert.Equal(HttpStatusCode.NoContent, (await Send(HttpMethod.Post, start, _host)).StatusCode);
+        Assert.Equal(HttpStatusCode.NoContent, (await Send(HttpMethod.Post, stop, _host)).StatusCode);
+        Assert.Equal([(MediaAccessService.RoomName(_tenant.Id, meeting.Id), true), (MediaAccessService.RoomName(_tenant.Id, meeting.Id), false)], _control.Recordings);
     }
 
     [Fact]

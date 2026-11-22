@@ -111,10 +111,7 @@ public sealed class ActionItem
             throw new MeetingDomainException($"Action title cannot exceed {MaxTitleLength} characters.");
         }
 
-        if (description is { Length: > MaxDescriptionLength })
-        {
-            throw new MeetingDomainException($"Action description cannot exceed {MaxDescriptionLength} characters.");
-        }
+        var normalizedDescription = NormalizeRichText(description, MaxDescriptionLength);
 
         if (ownerUserId == Guid.Empty)
         {
@@ -122,7 +119,7 @@ public sealed class ActionItem
         }
 
         Title = title.Trim();
-        Description = string.IsNullOrWhiteSpace(description) ? null : description.Trim();
+        Description = normalizedDescription;
         OwnerUserId = ownerUserId;
         DueDate = dueDate;
     }
@@ -144,8 +141,16 @@ public sealed class ActionItem
             return required ? throw new MeetingDomainException("A note is required.") : null;
         }
 
-        return note.Trim().Length > MaxNoteLength
-            ? throw new MeetingDomainException($"A note cannot exceed {MaxNoteLength} characters.")
-            : note.Trim();
+        var sanitized = RichTextContent.Sanitize(note, MaxNoteLength);
+        return string.IsNullOrWhiteSpace(RichTextContent.ToPlainText(sanitized))
+            ? required ? throw new MeetingDomainException("A note is required.") : null
+            : sanitized;
+    }
+
+    private static string? NormalizeRichText(string? value, int maxLength)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return null;
+        var clean = RichTextContent.Sanitize(value, maxLength);
+        return string.IsNullOrWhiteSpace(RichTextContent.ToPlainText(clean)) ? null : clean;
     }
 }

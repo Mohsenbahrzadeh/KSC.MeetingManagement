@@ -1,6 +1,12 @@
 # Media stack for the proof of concept (TASK-043, TASK-044). NOT TESTED: Docker was not available where this was written.
 # Image tags are placeholders on purpose: pin exact versions (never "latest") after checking licences (ADR-0004).
 services:
+  redis:
+    image: ${REDIS_IMAGE:?set REDIS_IMAGE to a pinned redis tag}
+    network_mode: host
+    restart: unless-stopped
+    command: ["redis-server", "--bind", "127.0.0.1", "--protected-mode", "yes"]
+
   livekit:
     image: ${LIVEKIT_IMAGE:?set LIVEKIT_IMAGE to a pinned livekit/livekit-server tag}
     command: ["--config", "/etc/livekit.yaml"]
@@ -8,6 +14,19 @@ services:
     restart: unless-stopped
     volumes:
       - ./livekit.rendered.yaml:/etc/livekit.yaml:ro
+
+  egress:
+    image: ${EGRESS_IMAGE:?set EGRESS_IMAGE to a pinned livekit/egress tag}
+    network_mode: host
+    restart: unless-stopped
+    depends_on:
+      - redis
+      - livekit
+    environment:
+      EGRESS_CONFIG_FILE: /etc/egress.yaml
+    volumes:
+      - ./egress.rendered.yaml:/etc/egress.yaml:ro
+      - ${RECORDING_ROOT:?set a persistent recording directory}:/recordings
 
   coturn:
     image: ${COTURN_IMAGE:?set COTURN_IMAGE to a pinned coturn/coturn tag}
