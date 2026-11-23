@@ -35,7 +35,11 @@ public sealed class RoomTests : BunitContext, IAsyncLifetime
     {
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
         {
-            owner._joinCalls++;
+            if (request.RequestUri?.AbsolutePath.EndsWith("/room/join", StringComparison.Ordinal) == true)
+            {
+                owner._joinCalls++;
+            }
+
             if (request.RequestUri?.AbsolutePath.EndsWith("/media-permissions", StringComparison.Ordinal) == true
                 || request.RequestUri?.AbsolutePath.EndsWith("/microphone-permission", StringComparison.Ordinal) == true
                 || request.RequestUri?.AbsolutePath.EndsWith("/screen-share-permission", StringComparison.Ordinal) == true)
@@ -179,8 +183,6 @@ public sealed class RoomTests : BunitContext, IAsyncLifetime
         cut.WaitForAssertion(() => Assert.NotEmpty(cut.FindAll("video.ksc-preview")));
         cut.FindAll("button").First(b => b.TextContent.Contains("ورود به جلسه", StringComparison.Ordinal)).Click();
         cut.WaitForAssertion(() => Assert.NotEmpty(cut.FindAll("[role=toolbar]")));
-        cut.FindAll("button").First(b => b.TextContent.Contains("شرکت‌کنندگان", StringComparison.Ordinal)).Click();
-
         cut.InvokeAsync(() => cut.Instance.OnParticipants(
         [
             new Room.RoomParticipant("u-host", "برگزارکننده", true, true),
@@ -212,7 +214,6 @@ public sealed class RoomTests : BunitContext, IAsyncLifetime
         [
             new Room.RoomParticipant("u-member", "شرکت‌کننده", true, false),
         ]));
-        cut.FindAll("button").First(b => b.TextContent.Contains("شرکت‌کنندگان", StringComparison.Ordinal)).Click();
         cut.WaitForAssertion(() => Assert.Contains("ksc-raised-hand", cut.Markup, StringComparison.Ordinal));
 
         cut.InvokeAsync(() => cut.Instance.OnSpeakDecision(true));

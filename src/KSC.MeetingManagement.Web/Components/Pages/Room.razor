@@ -74,7 +74,7 @@
             <div class="ksc-room-presence-controls">
             <MudButton Variant="Variant.Outlined" Size="Size.Small" Class="ksc-room-roster-toggle"
                        StartIcon="@Icons.Material.Filled.PeopleAlt" aria-expanded="@_showParticipants"
-                       aria-controls="ksc-room-participant-list" OnClick="() => _showParticipants = !_showParticipants">
+                       aria-controls="ksc-room-participant-list" OnClick="ToggleParticipants">
                 شرکت‌کنندگان · @_participants.Count
             </MudButton>
             <MudButton Variant="Variant.Outlined" Size="Size.Small" Class="ksc-room-whiteboard-toggle"
@@ -318,7 +318,7 @@
     private string _whiteboardTool = "pen";
     private IReadOnlyList<PermissionRequest> _permissionRequests = [];
     private bool _mutingAll;
-    private bool _showParticipants;
+    private bool _showParticipants = true;
     private bool _showWhiteboard;
     private bool _muteAllNotice;
     private bool _speakRequested;
@@ -707,6 +707,11 @@
     private Task SelectCircleAsync() => SelectWhiteboardToolAsync("circle");
     private Task SelectTriangleAsync() => SelectWhiteboardToolAsync("triangle");
     private Task SelectArrowAsync() => SelectWhiteboardToolAsync("arrow");
+
+    private void ToggleParticipants()
+    {
+        _showParticipants = !_showParticipants;
+    }
 
     private async Task ToggleWhiteboardAsync()
     {

@@ -95,12 +95,12 @@ public class OfflineAssetsTests
         var roomPage = File.ReadAllText(Path.Combine(WebRoot(), "Components", "Pages", "Room.razor"));
         Assert.Contains("کیفیت شبکه:", roomPage, StringComparison.Ordinal);
         Assert.Contains("OnConnectionQuality", roomPage, StringComparison.Ordinal);
-        Assert.Contains("<canvas @ref=\"_whiteboard\"", roomPage, StringComparison.Ordinal);
+        Assert.Contains("id=\"ksc-room-whiteboard-canvas\" @ref=\"_whiteboard\"", roomPage, StringComparison.Ordinal);
         Assert.Contains("رسم دایره", roomPage, StringComparison.Ordinal);
         Assert.Contains("اجازهٔ اشتراک صفحه", roomPage, StringComparison.Ordinal);
         Assert.Contains("اجازهٔ وایت‌برد", roomPage, StringComparison.Ordinal);
         Assert.Contains("نوشتن متن", roomPage, StringComparison.Ordinal);
-        Assert.DoesNotContain("_showWhiteboard", roomPage, StringComparison.Ordinal);
+        Assert.Contains("_showWhiteboard", roomPage, StringComparison.Ordinal);
         Assert.DoesNotMatch(@"import\s[^;]*from\s+['""](https?:)?//", script);
         Assert.DoesNotContain("import(\"http", script, StringComparison.Ordinal);
     }

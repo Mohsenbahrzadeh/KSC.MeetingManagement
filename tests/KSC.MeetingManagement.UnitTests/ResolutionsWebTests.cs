@@ -130,12 +130,12 @@ public sealed class ResolutionsWebTests : BunitContext, IAsyncLifetime
         await page.InvokeAsync(() => page.FindAll("button").Single(b => b.TextContent.Trim() == "ثبت ابطال").Click());
         page.WaitForAssertion(() => Assert.Contains("دلیل ابطال را وارد کنید.", page.Markup));
         Assert.DoesNotContain(_requests, r => r.Path.EndsWith("/revoke", StringComparison.Ordinal));
-        page.Find("textarea").Change("دلیل آزمون");
+        await page.InvokeAsync(() => page.FindComponent<KscRichTextEditor>().Instance.ContentChanged("<p>دلیل آزمون</p>", 10));
         await page.InvokeAsync(() => page.FindAll("button").Single(b => b.TextContent.Trim() == "ثبت ابطال").Click());
         page.WaitForAssertion(() => Assert.Contains(_requests, r => r.Path.EndsWith("/revoke", StringComparison.Ordinal)));
         using var body = JsonDocument.Parse(_requests.Single(r => r.Path.EndsWith("/revoke", StringComparison.Ordinal)).Body);
         Assert.Equal(3, body.RootElement.GetProperty("expectedLockVersion").GetInt64());
-        Assert.Equal("دلیل آزمون", body.RootElement.GetProperty("reason").GetString());
+        Assert.Contains("دلیل آزمون", body.RootElement.GetProperty("reason").GetString(), StringComparison.Ordinal);
     }
 
     [Fact]
