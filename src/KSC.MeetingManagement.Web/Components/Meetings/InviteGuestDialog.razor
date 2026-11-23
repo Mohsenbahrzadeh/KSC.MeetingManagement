@@ -6,7 +6,7 @@
 
 <MudDialog>
     <DialogContent>
-        <MudStack Spacing="2">
+        <div class="ksc-form-grid">
             @if (_invitation is null)
             {
                 <MudTextField @bind-Value="_name" Label="نام مهمان" Required="true" Immediate="true" MaxLength="200" Disabled="_saving"
@@ -17,16 +17,16 @@
                                  Error="@HasError("days")" ErrorText="@ErrorOf("days")" />
                 @if (_serverError is not null)
                 {
-                    <MudAlert Severity="Severity.Error" Variant="Variant.Outlined" role="alert">@_serverError</MudAlert>
+                    <MudAlert Class="ksc-form-span-2" Severity="Severity.Error" Variant="Variant.Outlined" role="alert">@_serverError</MudAlert>
                 }
             }
             else
             {
-                <MudAlert Severity="Severity.Success" Variant="Variant.Outlined">دعوت‌نامه برای @_invitation.Participant.GuestName ثبت شد.</MudAlert>
-                <MudText Typo="Typo.body2">این کد فقط همین یک بار نمایش داده می‌شود. آن را برای مهمان بفرستید یا نگه دارید.</MudText>
-                <MudTextField T="string" Value="_invitation.Token" ReadOnly="true" Label="کد دعوت" Variant="Variant.Outlined" Style="direction: ltr" />
+                <MudAlert Class="ksc-form-span-2" Severity="Severity.Success" Variant="Variant.Outlined">دعوت‌نامه برای @_invitation.Participant.GuestName ثبت شد.</MudAlert>
+                <MudText Class="ksc-form-span-2" Typo="Typo.body2">این کد فقط همین یک بار نمایش داده می‌شود. آن را برای مهمان بفرستید یا نگه دارید.</MudText>
+                <MudTextField Class="ksc-form-span-2" T="string" Value="_invitation.Token" ReadOnly="true" Label="کد دعوت" Variant="Variant.Outlined" Style="direction: ltr" />
             }
-        </MudStack>
+        </div>
     </DialogContent>
     <DialogActions>
         @if (_invitation is null)

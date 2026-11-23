@@ -9,12 +9,12 @@
 @inject IJSRuntime JS
 
 <PageTitle>پیوست‌ها | مدیریت جلسات</PageTitle>
-<MudButton Href="@($"/meetings/{MeetingId}")" Variant="Variant.Text" Size="Size.Small">« بازگشت به جلسه</MudButton>
-<MudText Typo="Typo.h4" Class="ksc-page-title mb-3" tabindex="-1">پیوست‌های جلسه</MudText>
+<MudButton Href="@($"/meetings/{MeetingId}")" Variant="Variant.Text" Size="Size.Small" Class="ksc-back-link" StartIcon="@Icons.Material.Filled.ArrowForward">بازگشت به جلسه</MudButton>
+<div class="ksc-page-heading"><div><span class="ksc-section-eyebrow">فایل‌های جلسه</span><MudText Typo="Typo.h4" Class="ksc-page-title" tabindex="-1">پیوست‌ها</MudText><p class="ksc-page-sub">فایل‌های مرجع جلسه را بارگذاری و دریافت کنید.</p></div></div>
 
 @if (CanEdit)
 {
-    <MudPaper Class="pa-3 mb-3" Outlined="true" Elevation="0">
+    <MudPaper Class="ksc-upload-panel pa-3 mb-3" Outlined="true" Elevation="0">
         <label for="attachment-file">انتخاب فایل (حداکثر ۱۰ مگابایت: PDF، تصویر، سند آفیس یا متن)</label>
         <InputFile id="attachment-file" OnChange="SelectFile" accept=".pdf,.png,.jpg,.jpeg,.docx,.xlsx,.pptx,.txt" disabled="@_busy" />
         @if (_file is not null)

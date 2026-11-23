@@ -3,6 +3,7 @@ using System.Text;
 using System.Text.Json;
 using Bunit;
 using KSC.MeetingManagement.Web.Components.Pages;
+using KSC.MeetingManagement.Web.Components.Common;
 using KSC.MeetingManagement.Web.Services;
 using Microsoft.Extensions.DependencyInjection;
 using MudBlazor;
@@ -129,12 +130,12 @@ public sealed class ResolutionsWebTests : BunitContext, IAsyncLifetime
         await page.InvokeAsync(() => page.FindAll("button").Single(b => b.TextContent.Trim() == "ثبت ابطال").Click());
         page.WaitForAssertion(() => Assert.Contains("دلیل ابطال را وارد کنید.", page.Markup));
         Assert.DoesNotContain(_requests, r => r.Path.EndsWith("/revoke", StringComparison.Ordinal));
-        page.Find("textarea").Change("دلیل آزمون");
+        await page.InvokeAsync(() => page.FindComponent<KscRichTextEditor>().Instance.ContentChanged("<p>دلیل آزمون</p>", 10));
         await page.InvokeAsync(() => page.FindAll("button").Single(b => b.TextContent.Trim() == "ثبت ابطال").Click());
         page.WaitForAssertion(() => Assert.Contains(_requests, r => r.Path.EndsWith("/revoke", StringComparison.Ordinal)));
         using var body = JsonDocument.Parse(_requests.Single(r => r.Path.EndsWith("/revoke", StringComparison.Ordinal)).Body);
         Assert.Equal(3, body.RootElement.GetProperty("expectedLockVersion").GetInt64());
-        Assert.Equal("دلیل آزمون", body.RootElement.GetProperty("reason").GetString());
+        Assert.Contains("دلیل آزمون", body.RootElement.GetProperty("reason").GetString(), StringComparison.Ordinal);
     }
 
     [Fact]
@@ -169,7 +170,8 @@ public sealed class ResolutionsWebTests : BunitContext, IAsyncLifetime
         provider.WaitForAssertion(() => Assert.Contains("متن مصوبه را وارد کنید.", provider.Markup));
         Assert.DoesNotContain(_requests, r => r.Method == HttpMethod.Post && r.Path.EndsWith("/resolutions", StringComparison.Ordinal));
 
-        provider.Find("textarea").Change("متن مصوبهٔ تازه");
+        var editor = provider.FindComponent<KscRichTextEditor>();
+        await provider.InvokeAsync(() => editor.Instance.ContentChanged("متن مصوبهٔ تازه", "متن مصوبهٔ تازه".Length));
         await provider.InvokeAsync(() => provider.FindAll("button").Single(b => b.TextContent.Trim() == "ذخیره").Click());
         provider.WaitForAssertion(() => Assert.Contains(_requests, r => r.Method == HttpMethod.Post && r.Path.EndsWith("/resolutions", StringComparison.Ordinal)));
         var post = _requests.Single(r => r.Method == HttpMethod.Post && r.Path.EndsWith("/resolutions", StringComparison.Ordinal));

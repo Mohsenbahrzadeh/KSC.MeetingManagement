@@ -10,18 +10,20 @@
 
 <PageTitle>جلسات | مدیریت جلسات</PageTitle>
 
-<MudText Typo="Typo.h4" Class="ksc-page-title" tabindex="-1">جلسات</MudText>
+<div class="ksc-page-heading">
+    <div><span class="ksc-section-eyebrow">برنامه‌ریزی و پیگیری</span><MudText Typo="Typo.h4" Class="ksc-page-title" tabindex="-1">جلسات</MudText><p class="ksc-page-sub">جلسه‌های سازمان را ببینید و مدیریت کنید.</p></div>
+    <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add" OnClick="CreateAsync">جلسهٔ جدید</MudButton>
+</div>
 
-<MudStack Row="true" Spacing="2" AlignItems="AlignItems.Center" Class="mb-3">
-    <MudSelect T="MeetingStatus?" Value="_status" ValueChanged="StatusChangedAsync" Label="وضعیت" Clearable="true" Style="max-width: 220px">
+<MudPaper Class="ksc-filter-bar mb-4" Outlined="true" Elevation="0">
+    <MudSelect T="MeetingStatus?" Value="_status" ValueChanged="StatusChangedAsync" Label="فیلتر بر اساس وضعیت" Clearable="true" Style="max-width: 260px">
         @foreach (var s in Statuses)
         {
             <MudSelectItem T="MeetingStatus?" Value="@s">@CalendarStatusText.Label((CalendarItemStatus)(int)s)</MudSelectItem>
         }
     </MudSelect>
-    <MudSpacer />
-    <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="CreateAsync">جلسهٔ جدید</MudButton>
-</MudStack>
+    <MudText Typo="Typo.caption" Color="Color.Secondary">@PersianText.Digits(_items.Count) جلسه در این فهرست</MudText>
+</MudPaper>
 
 <StatePanel State="_panel" ErrorText="@_error" OnRetry="ReloadAsync" EmptyText="جلسه‌ای پیدا نشد.">
     <MudTable Items="_items" Dense="true" Hover="true" Elevation="0" Class="ksc-meetings-table">
@@ -42,6 +44,8 @@
             </MudTd>
             <MudTd DataLabel="زمان">@TimeText(context)</MudTd>
             <MudTd>
+                <MudButton Size="Size.Small" Variant="Variant.Outlined" StartIcon="@Icons.Material.Filled.FactCheck"
+                           Href="@($"/meetings/{context.Id}")" aria-label="@("جزئیات و کارهای " + context.Title)">جزئیات و کارها</MudButton>
                 <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="() => EditAsync(context.Id)" aria-label="@("ویرایش " + context.Title)">ویرایش</MudButton>
                 @if (HasRoom(context))
                 {

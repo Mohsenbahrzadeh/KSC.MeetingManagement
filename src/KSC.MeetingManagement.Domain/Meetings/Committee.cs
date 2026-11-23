@@ -26,6 +26,7 @@ public sealed class CommitteeMember
 /// <summary>A standing committee of a tenant with a set of members; at most one member is Chair.</summary>
 public sealed class Committee
 {
+    public const int MaxDescriptionLength = 2000;
     private readonly List<CommitteeMember> _members = [];
 
     public Committee(Guid id, Guid tenantId, string name, string? description)
@@ -38,7 +39,7 @@ public sealed class Committee
         Id = id;
         TenantId = tenantId;
         Name = RequireName(name);
-        Description = description?.Trim();
+        Description = NormalizeDescription(description);
         IsActive = true;
     }
 
@@ -52,7 +53,7 @@ public sealed class Committee
     public void Update(string name, string? description, bool isActive)
     {
         Name = RequireName(name);
-        Description = description?.Trim();
+        Description = NormalizeDescription(description);
         IsActive = isActive;
     }
 
@@ -105,5 +106,12 @@ public sealed class Committee
         }
 
         return name.Trim();
+    }
+
+    private static string? NormalizeDescription(string? description)
+    {
+        if (string.IsNullOrWhiteSpace(description)) return null;
+        var clean = RichTextContent.Sanitize(description, MaxDescriptionLength);
+        return string.IsNullOrWhiteSpace(RichTextContent.ToPlainText(clean)) ? null : clean;
     }
 }

@@ -27,6 +27,7 @@ public sealed class MeetingsApiTests : IClassFixture<WebApplicationFactory<Progr
     private readonly Guid _organizerB = Guid.NewGuid();
     private readonly Guid _participantA = Guid.NewGuid();
     private readonly Guid _adminA = Guid.NewGuid();
+    private readonly Guid _committeeChair = Guid.NewGuid();
     private readonly HttpClient _client;
     private readonly IServiceProvider _services;
 
@@ -50,6 +51,7 @@ public sealed class MeetingsApiTests : IClassFixture<WebApplicationFactory<Progr
         members.Add(new Membership(_tenantA.Id, _organizerA, [Roles.MeetingOrganizer]));
         members.Add(new Membership(_tenantA.Id, _participantA, [Roles.Participant]));
         members.Add(new Membership(_tenantA.Id, _adminA, [Roles.TenantAdministrator]));
+        members.Add(new Membership(_tenantA.Id, _committeeChair, [Roles.Participant]));
         members.Add(new Membership(_tenantB.Id, _organizerB, [Roles.MeetingOrganizer]));
 
         _client = app.CreateClient(new() { AllowAutoRedirect = false });
@@ -68,8 +70,61 @@ public sealed class MeetingsApiTests : IClassFixture<WebApplicationFactory<Progr
         return _client.SendAsync(request);
     }
 
-    private static object NewMeeting(Guid? id = null, string title = "Board", DateTimeOffset? start = null, DateTimeOffset? end = null) =>
-        new { id, title, mode = "Hybrid", start, end };
+    private static object NewMeeting(Guid? id = null, string title = "Board", DateTimeOffset? start = null, DateTimeOffset? end = null, Guid? committeeId = null) =>
+        new { id, title, mode = "Hybrid", start, end, committeeId };
+
+    private async Task<Guid> CreateCommitteeWithChair()
+    {
+        var created = await Send(HttpMethod.Post, "/api/v1/committees", _tenantA, _adminA, new { name = "Planning" });
+        Assert.Equal(HttpStatusCode.Created, created.StatusCode);
+        using var document = System.Text.Json.JsonDocument.Parse(await created.Content.ReadAsStringAsync());
+        var committeeId = document.RootElement.GetProperty("id").GetGuid();
+        var addChair = await Send(HttpMethod.Post, $"/api/v1/committees/{committeeId}/members", _tenantA, _adminA,
+            new { userId = _committeeChair, role = "Chair" });
+        Assert.Equal(HttpStatusCode.OK, addChair.StatusCode);
+        return committeeId;
+    }
+
+    [Fact]
+    public async Task Committee_meetings_are_visible_only_to_chairs_invitees_and_tenant_admins()
+    {
+        var committeeId = await CreateCommitteeWithChair();
+        var created = await Send(HttpMethod.Post, "/api/v1/meetings", _tenantA, _committeeChair,
+            NewMeeting(title: "Planning committee", committeeId: committeeId));
+        Assert.Equal(HttpStatusCode.Created, created.StatusCode);
+        var meeting = await created.Content.ReadFromJsonAsync<MeetingDto>(Json);
+
+        var chairGet = await Send(HttpMethod.Get, $"/api/v1/meetings/{meeting!.Id}", _tenantA, _committeeChair);
+        var memberGet = await Send(HttpMethod.Get, $"/api/v1/meetings/{meeting.Id}", _tenantA, _participantA);
+        var chairList = await (await Send(HttpMethod.Get, "/api/v1/meetings", _tenantA, _committeeChair)).Content.ReadFromJsonAsync<List<MeetingDto>>(Json);
+        var memberList = await (await Send(HttpMethod.Get, "/api/v1/meetings", _tenantA, _participantA)).Content.ReadFromJsonAsync<List<MeetingDto>>(Json);
+        var adminGet = await Send(HttpMethod.Get, $"/api/v1/meetings/{meeting.Id}", _tenantA, _adminA);
+
+        Assert.Equal(HttpStatusCode.OK, chairGet.StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, memberGet.StatusCode);
+        Assert.Contains(chairList!, item => item.Id == meeting.Id);
+        Assert.DoesNotContain(memberList!, item => item.Id == meeting.Id);
+        Assert.Equal(HttpStatusCode.OK, adminGet.StatusCode);
+    }
+
+    [Fact]
+    public async Task Only_committee_chair_or_tenant_admin_can_edit_committee_meeting()
+    {
+        var committeeId = await CreateCommitteeWithChair();
+        var created = await Send(HttpMethod.Post, "/api/v1/meetings", _tenantA, _committeeChair,
+            NewMeeting(title: "Planning committee", committeeId: committeeId));
+        var meeting = await created.Content.ReadFromJsonAsync<MeetingDto>(Json);
+        var updateBody = new { expectedVersion = meeting!.Version, title = "Updated", mode = "Online", committeeId };
+
+        var unrelatedOrganizer = await Send(HttpMethod.Put, $"/api/v1/meetings/{meeting.Id}", _tenantA, _organizerA, updateBody);
+        var chair = await Send(HttpMethod.Put, $"/api/v1/meetings/{meeting.Id}", _tenantA, _committeeChair, updateBody);
+        var admin = await Send(HttpMethod.Put, $"/api/v1/meetings/{meeting.Id}", _tenantA, _adminA,
+            new { expectedVersion = meeting.Version + 1, title = "Admin update", mode = "Online", committeeId });
+
+        Assert.Equal(HttpStatusCode.Forbidden, unrelatedOrganizer.StatusCode);
+        Assert.Equal(HttpStatusCode.OK, chair.StatusCode);
+        Assert.Equal(HttpStatusCode.OK, admin.StatusCode);
+    }
 
     [Fact]
     public async Task Organizer_creates_and_reads_back_meeting()
@@ -82,7 +137,7 @@ public sealed class MeetingsApiTests : IClassFixture<WebApplicationFactory<Progr
         Assert.Equal("Scheduled", created.Status.ToString());
 
         var read = await Send(HttpMethod.Get, $"/api/v1/meetings/{created.Id}", _tenantA, _participantA);
-        Assert.Equal(HttpStatusCode.OK, read.StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, read.StatusCode);
     }
 
     [Fact]
@@ -132,7 +187,8 @@ public sealed class MeetingsApiTests : IClassFixture<WebApplicationFactory<Progr
         var created = await (await Send(HttpMethod.Post, "/api/v1/meetings", _tenantA, _organizerA, NewMeeting()))
             .Content.ReadFromJsonAsync<MeetingDto>(Json);
 
-        var list = await (await Send(HttpMethod.Get, "/api/v1/meetings", _tenantB, _organizerB)).Content.ReadFromJsonAsync<List<MeetingDto>>(Json);
+        var listResponse = await Send(HttpMethod.Get, "/api/v1/meetings", _tenantB, _organizerB);
+        var list = await listResponse.Content.ReadFromJsonAsync<List<MeetingDto>>(Json);
 
         Assert.DoesNotContain(list!, m => m.Id == created!.Id);
     }

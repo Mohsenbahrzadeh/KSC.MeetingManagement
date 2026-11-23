@@ -9,14 +9,14 @@
 @inject SessionState Session
 
 <PageTitle>دفتر ممیزی | مدیریت جلسات</PageTitle>
-<MudText Typo="Typo.h4" Class="ksc-page-title mb-3" tabindex="-1">دفتر ممیزی</MudText>
+<div class="ksc-page-heading"><div><span class="ksc-section-eyebrow">امنیت و پیگیری</span><MudText Typo="Typo.h4" Class="ksc-page-title" tabindex="-1">دفتر ممیزی</MudText><p class="ksc-page-sub">رویدادهای ثبت‌شده و تغییرات فضای کاری را بررسی کنید.</p></div></div>
 @if (!CanView)
 {
     <MudAlert Severity="Severity.Warning" role="alert">شما دسترسی مشاهدهٔ دفتر ممیزی را ندارید.</MudAlert>
 }
 else
 {
-    <MudPaper Class="pa-3 mb-3" Outlined="true" Elevation="0">
+    <MudPaper Class="ksc-filter-panel pa-3 mb-3" Outlined="true" Elevation="0">
         <MudGrid Spacing="2">
             <MudItem xs="12" sm="6" md="3"><KscJalaliDatePicker @bind-Value="_from" Label="از تاریخ" /></MudItem>
             <MudItem xs="12" sm="6" md="3"><KscJalaliDatePicker @bind-Value="_to" Label="تا تاریخ (شامل)" /></MudItem>

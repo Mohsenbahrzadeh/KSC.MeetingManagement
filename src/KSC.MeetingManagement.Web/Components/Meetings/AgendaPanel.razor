@@ -1,12 +1,13 @@
 @using KSC.MeetingManagement.Application.Agenda
 @using KSC.MeetingManagement.Calendar
+@using KSC.MeetingManagement.Domain.Meetings
 @using KSC.MeetingManagement.Web.Components.Common
 @using KSC.MeetingManagement.Web.Services
 @inject AgendaApiClient Api
 @inject IDialogService Dialogs
 @inject ISnackbar Snackbar
 
-<section aria-labelledby="agenda-title" class="mt-4">
+<section aria-labelledby="agenda-title" class="ksc-meeting-subsection ksc-agenda-subsection">
     <MudStack Row="true" AlignItems="AlignItems.Center" Class="mb-2">
         <MudText Typo="Typo.h6" id="agenda-title">دستور جلسه</MudText>
         <MudSpacer />
@@ -34,7 +35,7 @@
                     <strong>@context.Title</strong>
                     @if (!string.IsNullOrWhiteSpace(context.Description))
                     {
-                        <div>@context.Description</div>
+                        <div class="ksc-rich-output ksc-inline-rich">@((MarkupString)RichTextContent.ToDisplayHtml(context.Description, AgendaItem.MaxDescriptionLength))</div>
                     }
                     @if (context.PresenterUserId is { } presenter)
                     {

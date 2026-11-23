@@ -70,7 +70,11 @@ public sealed class ResolutionsApiTests : IClassFixture<WebApplicationFactory<Pr
     private async Task<Guid> CreateMeeting()
     {
         var response = await Send(HttpMethod.Post, "/api/v1/meetings", _tenantA, _organizer, new { title = "Board", mode = "Online" });
-        return (await response.Content.ReadFromJsonAsync<MeetingDto>(Json))!.Id;
+        var meetingId = (await response.Content.ReadFromJsonAsync<MeetingDto>(Json))!.Id;
+        var inviteSecretary = await Send(HttpMethod.Post, $"/api/v1/meetings/{meetingId}/participants/internal", _tenantA, _organizer,
+            new { userId = _secretary });
+        Assert.Equal(HttpStatusCode.Created, inviteSecretary.StatusCode);
+        return meetingId;
     }
 
     private async Task<AgendaDto> AddTopic(Guid meetingId, string title = "موضوع")
@@ -106,7 +110,7 @@ public sealed class ResolutionsApiTests : IClassFixture<WebApplicationFactory<Pr
         Assert.Equal((1, 2, 1), (first.Number, second.Number, otherFirst.Number));
         Assert.Equal(topic, first.AgendaItemId);
         Assert.Equal(ResolutionStatus.Draft, first.Status);
-        var list = (await (await Send(HttpMethod.Get, Url(meetingId), _tenantA, _participant)).Content.ReadFromJsonAsync<List<ResolutionDto>>(Json))!;
+        var list = (await (await Send(HttpMethod.Get, Url(meetingId), _tenantA, _organizer)).Content.ReadFromJsonAsync<List<ResolutionDto>>(Json))!;
         Assert.Equal([1, 2], list.Select(r => r.Number));
     }
 

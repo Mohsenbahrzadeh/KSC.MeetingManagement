@@ -144,7 +144,8 @@ public sealed class ActionsWebTests : BunitContext, IAsyncLifetime
         await page.InvokeAsync(() => page.FindAll("button").Single(b => b.TextContent.Trim() == "ثبت").Click());
         page.WaitForAssertion(() => Assert.Contains("دلیل لغو را وارد کنید.", page.Markup));
         Assert.DoesNotContain(_requests, r => r.Path.EndsWith("/cancel", StringComparison.Ordinal));
-        page.Find("textarea").Change("تغییر برنامه");
+        await page.InvokeAsync(() => page.FindComponent<KSC.MeetingManagement.Web.Components.Common.KscRichTextEditor>()
+            .Instance.ContentChanged("تغییر برنامه", "تغییر برنامه".Length));
         await page.InvokeAsync(() => page.FindAll("button").Single(b => b.TextContent.Trim() == "ثبت").Click());
         page.WaitForAssertion(() => Assert.Contains(_requests, r => r.Path.EndsWith("/cancel", StringComparison.Ordinal)));
         using var body = JsonDocument.Parse(_requests.Single(r => r.Path.EndsWith("/cancel", StringComparison.Ordinal)).Body);

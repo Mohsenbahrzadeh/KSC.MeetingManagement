@@ -11,76 +11,136 @@
 
 <PageTitle>@(_meeting?.Title ?? "جزئیات جلسه") | مدیریت جلسات</PageTitle>
 
-<MudButton Variant="Variant.Text" Href="/meetings" Size="Size.Small" Class="mb-2">« همهٔ جلسات</MudButton>
-
 <StatePanel State="_panel" ErrorText="@_error" OnRetry="LoadAsync">
     @if (_meeting is { } m)
     {
-        <MudText Typo="Typo.h4" Class="ksc-page-title" tabindex="-1">@m.Title</MudText>
-        <MudStack Row="true" Spacing="2" AlignItems="AlignItems.Center" Class="mb-3">
-            <MudChip T="string" Size="Size.Small" Class="@CalendarStatusText.CssClass((CalendarItemStatus)(int)m.Status)">@CalendarStatusText.Label((CalendarItemStatus)(int)m.Status)</MudChip>
-            @if (m.Number is not null)
-            {
-                <MudText Typo="Typo.body2">شمارهٔ جلسه: @PersianText.Digits(m.Number)</MudText>
-            }
-        </MudStack>
+        <div class="ksc-meeting-console">
+            <header class="ksc-meeting-console-header">
+                <div class="ksc-meeting-title-block">
+                    <MudButton Variant="Variant.Text" Href="/meetings" Size="Size.Small" Class="ksc-meeting-breadcrumb" StartIcon="@Icons.Material.Filled.ArrowForward">جلسه‌ها</MudButton>
+                    <div class="ksc-meeting-title-line">
+                        <div>
+                            <span class="ksc-meeting-number">جلسه@(m.Number is null ? "" : $" · {PersianText.Digits(m.Number)}")</span>
+                            <MudText Typo="Typo.h4" Class="ksc-meeting-console-title" id="meeting-title" tabindex="-1">@m.Title</MudText>
+                        </div>
+                        <MudChip T="string" Size="Size.Small" Class="@($"ksc-meeting-status {CalendarStatusText.CssClass((CalendarItemStatus)(int)m.Status)}")">@CalendarStatusText.Label((CalendarItemStatus)(int)m.Status)</MudChip>
+                    </div>
+                </div>
+                <div class="ksc-meeting-toolbar" aria-label="عملیات جلسه">
+                    @if (m.Status == MeetingStatus.Scheduled)
+                    {
+                        <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.PlayArrow" OnClick="() => RunAsync(StartText, v => Api.StartAsync(MeetingId, v, CancellationToken.None))" Disabled="_busy">شروع جلسه</MudButton>
+                    }
+                    @if (HasRoom(m))
+                    {
+                        <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.MeetingRoom" Href="@($"/meetings/{m.Id}/room")">ورود به اتاق</MudButton>
+                    }
+                    @if (m.Status == MeetingStatus.InProgress)
+                    {
+                        <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Stop" OnClick="() => RunAsync(EndText, v => Api.EndAsync(MeetingId, v, CancellationToken.None))" Disabled="_busy">پایان جلسه</MudButton>
+                    }
+                    @if (m.Status is not (MeetingStatus.Cancelled or MeetingStatus.Completed))
+                    {
+                        <MudButton Variant="Variant.Outlined" StartIcon="@Icons.Material.Filled.Edit" OnClick="EditAsync" Disabled="_busy">ویرایش</MudButton>
+                    }
+                    @if (m.Status == MeetingStatus.Scheduled)
+                    {
+                        <MudButton Variant="Variant.Outlined" StartIcon="@Icons.Material.Filled.EventBusy" OnClick="() => RunAsync(PostponeText, v => Api.PostponeAsync(MeetingId, v, CancellationToken.None))" Disabled="_busy">به تعویق انداختن</MudButton>
+                        <MudButton Variant="Variant.Text" Color="Color.Error" OnClick="CancelMeetingAsync" Disabled="_busy">لغو جلسه</MudButton>
+                    }
+                    else if (m.Status is MeetingStatus.Draft or MeetingStatus.Postponed)
+                    {
+                        <MudButton Variant="Variant.Text" Color="Color.Error" OnClick="CancelMeetingAsync" Disabled="_busy">لغو جلسه</MudButton>
+                    }
+                </div>
+            </header>
 
-        <MudPaper Class="pa-4 mb-3" Elevation="0" Outlined="true">
-            <dl class="ksc-details">
-                <dt>نوع برگزاری</dt>
-                <dd>@ModeLabel(m.Mode)</dd>
-                <dt>زمان</dt>
-                <dd>@TimeText(m)</dd>
+            @if (_actionError is not null)
+            {
+                <MudAlert Severity="Severity.Error" Variant="Variant.Outlined" role="alert">@_actionError</MudAlert>
+            }
+
+            <section class="ksc-meeting-at-a-glance" aria-label="اطلاعات اصلی جلسه">
+                <div><MudIcon Icon="@Icons.Material.Outlined.Event" /><span>زمان</span><strong>@TimeText(m)</strong></div>
+                <div><MudIcon Icon="@(m.Mode == MeetingMode.InPerson ? Icons.Material.Outlined.Place : Icons.Material.Outlined.Videocam)" /><span>نحوهٔ برگزاری</span><strong>@ModeLabel(m.Mode)</strong></div>
                 @if (m.StartedAtUtc is { } startedAt)
                 {
-                    <dt>شروع واقعی</dt>
-                    <dd>@Stamp(startedAt)</dd>
+                    <div><MudIcon Icon="@Icons.Material.Outlined.PlayCircle" /><span>شروع واقعی</span><strong>@Stamp(startedAt)</strong></div>
                 }
                 @if (m.EndedAtUtc is { } endedAt)
                 {
-                    <dt>پایان واقعی</dt>
-                    <dd>@Stamp(endedAt)</dd>
+                    <div><MudIcon Icon="@Icons.Material.Outlined.CheckCircle" /><span>پایان واقعی</span><strong>@Stamp(endedAt)</strong></div>
                 }
-                <dt>توضیحات</dt>
-                <dd>@(string.IsNullOrWhiteSpace(m.Description) ? "—" : m.Description)</dd>
-            </dl>
-        </MudPaper>
+            </section>
 
-        @if (_actionError is not null)
-        {
-            <MudAlert Severity="Severity.Error" Variant="Variant.Outlined" role="alert" Class="mb-3">@_actionError</MudAlert>
-        }
+            <div class="ksc-meeting-workspace-layout">
+                <nav class="ksc-meeting-section-nav" aria-label="بخش‌های جلسه">
+                    <button type="button" class="ksc-meeting-section-tab @TabClass("overview")" aria-pressed="@(_activeSection == "overview")" @onclick='() => SelectSection("overview")'>
+                        <MudIcon Icon="@Icons.Material.Outlined.Dashboard" /><span>نمای کلی</span>
+                    </button>
+                    <button type="button" class="ksc-meeting-section-tab @TabClass("participants")" aria-pressed="@(_activeSection == "participants")" @onclick='() => SelectSection("participants")'>
+                        <MudIcon Icon="@Icons.Material.Outlined.PeopleAlt" /><span>شرکت‌کنندگان</span>
+                    </button>
+                    <button type="button" class="ksc-meeting-section-tab @TabClass("agenda")" aria-pressed="@(_activeSection == "agenda")" @onclick='() => SelectSection("agenda")'>
+                        <MudIcon Icon="@Icons.Material.Outlined.FormatListNumbered" /><span>دستور جلسه</span>
+                    </button>
+                    <button type="button" class="ksc-meeting-section-tab @TabClass("followup")" aria-pressed="@(_activeSection == "followup")" @onclick='() => SelectSection("followup")'>
+                        <MudIcon Icon="@Icons.Material.Outlined.FactCheck" /><span>اسناد و پیگیری</span>
+                    </button>
+                </nav>
 
-        <MudStack Row="true" Spacing="2" Wrap="Wrap.Wrap">
-            @if (m.Status is not (MeetingStatus.Cancelled or MeetingStatus.Completed))
-            {
-                <MudButton Variant="Variant.Outlined" OnClick="EditAsync" Disabled="_busy">ویرایش</MudButton>
-            }
-            @if (HasRoom(m))
-            {
-                <MudButton Variant="Variant.Outlined" Href="@($"/meetings/{m.Id}/room")">ورود به اتاق</MudButton>
-            }
-            @if (m.Status == MeetingStatus.Scheduled)
-            {
-                <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="() => RunAsync(StartText, v => Api.StartAsync(MeetingId, v, CancellationToken.None))" Disabled="_busy">شروع جلسه</MudButton>
-                <MudButton Variant="Variant.Outlined" OnClick="() => RunAsync(PostponeText, v => Api.PostponeAsync(MeetingId, v, CancellationToken.None))" Disabled="_busy">به تعویق انداختن</MudButton>
-            }
-            @if (m.Status == MeetingStatus.InProgress)
-            {
-                <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="() => RunAsync(EndText, v => Api.EndAsync(MeetingId, v, CancellationToken.None))" Disabled="_busy">پایان جلسه</MudButton>
-            }
-            @if (m.Status is MeetingStatus.Draft or MeetingStatus.Scheduled or MeetingStatus.Postponed)
-            {
-                <MudButton Variant="Variant.Text" Color="Color.Error" OnClick="CancelMeetingAsync" Disabled="_busy">لغو جلسه</MudButton>
-            }
-        </MudStack>
-        <ParticipantsPanel MeetingId="m.Id" CanEdit="@(m.Status is not (MeetingStatus.Cancelled or MeetingStatus.Completed))" />
-
-        <AgendaPanel MeetingId="m.Id" CanEdit="@(m.Status is not (MeetingStatus.Cancelled or MeetingStatus.Completed))" />
-        <MudButton Variant="Variant.Outlined" Href="@($"/meetings/{m.Id}/minutes")" Class="mt-3">صورت‌جلسه</MudButton>
-        <MudButton Variant="Variant.Outlined" Href="@($"/meetings/{m.Id}/resolutions")" Class="mt-3 ms-2">مصوبات</MudButton>
-        <MudButton Variant="Variant.Outlined" Href="@($"/meetings/{m.Id}/actions")" Class="mt-3 ms-2">اقدامات پیگیری</MudButton>
-        <MudButton Variant="Variant.Outlined" Href="@($"/meetings/{m.Id}/attachments")" Class="mt-3 ms-2">پیوست‌ها</MudButton>
+                <section class="ksc-meeting-section-content" aria-label="@ActiveSectionLabel">
+                    @if (_activeSection == "overview")
+                    {
+                        <section class="ksc-meeting-overview" aria-labelledby="meeting-overview-title">
+                            <div class="ksc-meeting-content-heading">
+                                <div><span>فضای جلسه</span><h2 id="meeting-overview-title">نمای کلی</h2></div>
+                                <span>@ActionHint(m.Status)</span>
+                            </div>
+                            @if (!string.IsNullOrWhiteSpace(m.Description))
+                            {
+                                <article class="ksc-meeting-description">
+                                    <h3>دربارهٔ جلسه</h3>
+                                    <div class="ksc-rich-output">@((MarkupString)RichTextContent.ToDisplayHtml(m.Description, Meeting.MaxDescriptionLength))</div>
+                                </article>
+                            }
+                            else
+                            {
+                                <div class="ksc-meeting-description-empty"><MudIcon Icon="@Icons.Material.Outlined.Notes" /><span>برای این جلسه توضیحی ثبت نشده است.</span></div>
+                            }
+                            <div class="ksc-meeting-shortcuts" aria-label="دسترسی سریع">
+                                <button type="button" @onclick='() => SelectSection("participants")'><MudIcon Icon="@Icons.Material.Outlined.PeopleAlt" /><span><strong>شرکت‌کنندگان</strong><small>اعضا و مهمان‌های دعوت‌شده</small></span><MudIcon Icon="@Icons.Material.Filled.ArrowBack" /></button>
+                                <button type="button" @onclick='() => SelectSection("agenda")'><MudIcon Icon="@Icons.Material.Outlined.FormatListNumbered" /><span><strong>دستور جلسه</strong><small>موضوع‌ها و ترتیب گفتگو</small></span><MudIcon Icon="@Icons.Material.Filled.ArrowBack" /></button>
+                                <button type="button" @onclick='() => SelectSection("followup")'><MudIcon Icon="@Icons.Material.Outlined.FactCheck" /><span><strong>اسناد و پیگیری</strong><small>صورت‌جلسه، مصوبات و اقدامات</small></span><MudIcon Icon="@Icons.Material.Filled.ArrowBack" /></button>
+                            </div>
+                        </section>
+                    }
+                    else if (_activeSection == "participants")
+                    {
+                        <ParticipantsPanel MeetingId="m.Id" CanEdit="@(m.Status is not (MeetingStatus.Cancelled or MeetingStatus.Completed))" />
+                    }
+                    else if (_activeSection == "agenda")
+                    {
+                        <AgendaPanel MeetingId="m.Id" CanEdit="@(m.Status is not (MeetingStatus.Cancelled or MeetingStatus.Completed))" />
+                    }
+                    else
+                    {
+                        <section class="ksc-meeting-followup" aria-labelledby="meeting-followup-title">
+                            <div class="ksc-meeting-content-heading">
+                                <div><span>بایگانی و اقدام</span><h2 id="meeting-followup-title">اسناد و پیگیری</h2></div>
+                                <span>همهٔ خروجی‌های مرتبط با این جلسه</span>
+                            </div>
+                            <div class="ksc-followup-grid">
+                                <a href="@($"/meetings/{m.Id}/minutes")"><span class="ksc-followup-icon"><MudIcon Icon="@Icons.Material.Filled.Description" /></span><span><strong>صورت‌جلسه</strong><small>ثبت گفتگوها و جمع‌بندی جلسه</small></span><MudIcon Icon="@Icons.Material.Filled.ArrowBack" /></a>
+                                <a href="@($"/meetings/{m.Id}/resolutions")"><span class="ksc-followup-icon"><MudIcon Icon="@Icons.Material.Filled.Gavel" /></span><span><strong>مصوبات</strong><small>تصمیم‌های گرفته‌شده در جلسه</small></span><MudIcon Icon="@Icons.Material.Filled.ArrowBack" /></a>
+                                <a href="@($"/meetings/{m.Id}/actions")"><span class="ksc-followup-icon"><MudIcon Icon="@Icons.Material.Filled.TaskAlt" /></span><span><strong>اقدامات پیگیری</strong><small>مسئول، مهلت و وضعیت اجرا</small></span><MudIcon Icon="@Icons.Material.Filled.ArrowBack" /></a>
+                                <a href="@($"/meetings/{m.Id}/attachments")"><span class="ksc-followup-icon"><MudIcon Icon="@Icons.Material.Filled.AttachFile" /></span><span><strong>پیوست‌ها</strong><small>فایل‌ها و مستندات جلسه</small></span><MudIcon Icon="@Icons.Material.Filled.ArrowBack" /></a>
+                            </div>
+                        </section>
+                    }
+                </section>
+            </div>
+        </div>
     }
 </StatePanel>
 
@@ -97,6 +157,7 @@
     private string? _error;
     private string? _actionError;
     private bool _busy;
+    private string _activeSection = "overview";
 
     [Parameter] public Guid MeetingId { get; set; }
 
@@ -114,6 +175,7 @@
         }
 
         _meeting = result.Value;
+        _activeSection = "overview";
         _panel = PanelState.Ready;
     }
 
@@ -185,6 +247,33 @@
 
     private static bool HasRoom(MeetingDto m) =>
         m.Mode is MeetingMode.Online or MeetingMode.Hybrid && m.Status is MeetingStatus.Scheduled or MeetingStatus.InProgress;
+
+    private string TabClass(string section) => _activeSection == section ? "active" : string.Empty;
+
+    private string ActiveSectionLabel => _activeSection switch
+    {
+        "participants" => "شرکت‌کنندگان",
+        "agenda" => "دستور جلسه",
+        "followup" => "اسناد و پیگیری",
+        _ => "نمای کلی",
+    };
+
+    private void SelectSection(string section)
+    {
+        if (section is "overview" or "participants" or "agenda" or "followup")
+        {
+            _activeSection = section;
+        }
+    }
+
+    private static string ActionHint(MeetingStatus status) => status switch
+    {
+        MeetingStatus.Scheduled => "ورود به اتاق، شروع یا ویرایش زمان جلسه",
+        MeetingStatus.InProgress => "جلسه در حال برگزاری است",
+        MeetingStatus.Completed => "جلسه به پایان رسیده است",
+        MeetingStatus.Cancelled => "این جلسه لغو شده است",
+        _ => "جزئیات و برنامهٔ جلسه را مدیریت کنید",
+    };
 
     private string Stamp(DateTimeOffset instant) =>
         $"{PersianText.Format(_layout.DayOf(instant))} {PersianText.Time(_layout.TimeOf(instant))}";

@@ -167,8 +167,8 @@ public sealed class KscDbContext(DbContextOptions<KscDbContext> options, ITenant
             b.Property(m => m.TenantId).IsRequired();
             b.Property(m => m.OrganizerId).IsRequired();
             b.Property(m => m.Title).HasMaxLength(300).IsRequired();
-            b.Property(m => m.Description).HasMaxLength(4000);
-            b.Property(m => m.CancellationReason).HasMaxLength(1000);
+            b.Property(m => m.Description).HasMaxLength(RichTextContent.MaxStoredLength(Meeting.MaxDescriptionLength));
+            b.Property(m => m.CancellationReason).HasMaxLength(RichTextContent.MaxStoredLength(Meeting.MaxCancellationReasonLength));
             b.Property(m => m.Mode).HasConversion<string>().HasMaxLength(20);
             b.Property(m => m.Status).HasConversion<string>().HasMaxLength(20);
             b.Property(m => m.Version).IsConcurrencyToken();
@@ -299,9 +299,9 @@ public sealed class KscDbContext(DbContextOptions<KscDbContext> options, ITenant
             b.Property(a => a.MeetingId).IsRequired();
             b.Property(a => a.ResolutionId);
             b.Property(a => a.Title).HasMaxLength(ActionItem.MaxTitleLength).IsRequired();
-            b.Property(a => a.Description).HasMaxLength(ActionItem.MaxDescriptionLength);
+            b.Property(a => a.Description).HasMaxLength(RichTextContent.MaxStoredLength(ActionItem.MaxDescriptionLength));
             b.Property(a => a.Status).HasConversion<string>().HasMaxLength(20);
-            b.Property(a => a.Note).HasMaxLength(ActionItem.MaxNoteLength);
+            b.Property(a => a.Note).HasMaxLength(RichTextContent.MaxStoredLength(ActionItem.MaxNoteLength));
             b.Property(a => a.LockVersion).IsConcurrencyToken();
             b.Ignore(a => a.IsActive);
             b.HasIndex(a => new { a.TenantId, a.MeetingId });
@@ -317,9 +317,9 @@ public sealed class KscDbContext(DbContextOptions<KscDbContext> options, ITenant
             b.Property(r => r.TenantId).IsRequired();
             b.Property(r => r.MeetingId).IsRequired();
             b.Property(r => r.Number);
-            b.Property(r => r.Text).HasMaxLength(Resolution.MaxTextLength).IsRequired();
+            b.Property(r => r.Text).HasMaxLength(RichTextContent.MaxStoredLength(Resolution.MaxTextLength)).IsRequired();
             b.Property(r => r.Status).HasConversion<string>().HasMaxLength(20);
-            b.Property(r => r.RevocationReason).HasMaxLength(Resolution.MaxReasonLength);
+            b.Property(r => r.RevocationReason).HasMaxLength(RichTextContent.MaxStoredLength(Resolution.MaxReasonLength));
             b.Property(r => r.LockVersion).IsConcurrencyToken();
             b.HasIndex(r => new { r.TenantId, r.MeetingId, r.Number }).IsUnique();
             b.HasIndex(r => r.AgendaItemId);
@@ -364,7 +364,7 @@ public sealed class KscDbContext(DbContextOptions<KscDbContext> options, ITenant
             b.Property(t => t.TenantId).IsRequired();
             b.Property(t => t.From).HasConversion<string>().HasMaxLength(20);
             b.Property(t => t.To).HasConversion<string>().HasMaxLength(20);
-            b.Property(t => t.Comment).HasMaxLength(Domain.Meetings.Minutes.MaxCommentLength);
+            b.Property(t => t.Comment).HasMaxLength(RichTextContent.MaxStoredLength(Domain.Meetings.Minutes.MaxCommentLength));
             b.Property(t => t.VersionNumber);
             b.Property(t => t.ActorUserId);
             b.Property(t => t.AtUtc);
@@ -379,7 +379,7 @@ public sealed class KscDbContext(DbContextOptions<KscDbContext> options, ITenant
             b.Property(i => i.MeetingId).IsRequired();
             b.Property(i => i.Order);
             b.Property(i => i.Title).HasMaxLength(AgendaItem.MaxTitleLength).IsRequired();
-            b.Property(i => i.Description).HasMaxLength(AgendaItem.MaxDescriptionLength);
+            b.Property(i => i.Description).HasMaxLength(RichTextContent.MaxStoredLength(AgendaItem.MaxDescriptionLength));
             b.HasIndex(i => new { i.TenantId, i.MeetingId, i.Order });
             b.HasQueryFilter(i => i.TenantId == CurrentTenantId);
         });
@@ -407,7 +407,7 @@ public sealed class KscDbContext(DbContextOptions<KscDbContext> options, ITenant
             b.HasKey(c => c.Id);
             b.Property(c => c.TenantId).IsRequired();
             b.Property(c => c.Name).HasMaxLength(200).IsRequired();
-            b.Property(c => c.Description).HasMaxLength(2000);
+            b.Property(c => c.Description).HasMaxLength(RichTextContent.MaxStoredLength(Committee.MaxDescriptionLength));
             b.HasIndex(c => new { c.TenantId, c.Name });
             b.HasMany(c => c.Members).WithOne().HasForeignKey(m => m.CommitteeId).OnDelete(DeleteBehavior.Cascade);
             b.Navigation(c => c.Members).UsePropertyAccessMode(PropertyAccessMode.Field);

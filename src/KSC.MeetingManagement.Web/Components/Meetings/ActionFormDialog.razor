@@ -12,10 +12,12 @@
 
 <MudDialog>
     <DialogContent>
-        <MudStack Spacing="2">
-            <MudTextField @bind-Value="_title" Label="عنوان اقدام" Required="true" MaxLength="ActionItem.MaxTitleLength" Disabled="_saving"
+        <div class="ksc-form-grid">
+            <MudTextField Class="ksc-form-span-2" @bind-Value="_title" Label="عنوان اقدام" Required="true" MaxLength="ActionItem.MaxTitleLength" Disabled="_saving"
                           Error="@(_titleError is not null)" ErrorText="@_titleError" />
-            <MudTextField @bind-Value="_description" Label="توضیحات" Lines="3" MaxLength="ActionItem.MaxDescriptionLength" Disabled="_saving" />
+            <div class="ksc-form-span-2">
+                <KscRichTextEditor @bind-Value="_description" Label="توضیحات اقدام" MaxLength="ActionItem.MaxDescriptionLength" Disabled="_saving" />
+            </div>
             <MudSelect T="Guid?" @bind-Value="_ownerId" Label="مسئول" Required="true" Disabled="_saving"
                        Error="@(_ownerError is not null)" ErrorText="@_ownerError">
                 @foreach (var member in _members)
@@ -36,7 +38,7 @@
             </MudSelect>
             @if (_membersMessage is not null)
             {
-                <MudText Typo="Typo.caption">@_membersMessage</MudText>
+                <MudText Class="ksc-form-span-2" Typo="Typo.caption">@_membersMessage</MudText>
             }
             <div>
                 <KscJalaliDatePicker @bind-Value="_due" Label="سررسید" Required="true" Disabled="_saving" />
@@ -44,7 +46,7 @@
             </div>
             @if (Item is null)
             {
-                <MudSelect T="Guid?" @bind-Value="_resolutionId" Label="مصوبه (اختیاری)" Clearable="true" Disabled="_saving">
+                <MudSelect Class="ksc-form-span-2" T="Guid?" @bind-Value="_resolutionId" Label="مصوبه (اختیاری)" Clearable="true" Disabled="_saving">
                     @foreach (var resolution in _resolutions)
                     {
                         <MudSelectItem T="Guid?" Value="@((Guid?)resolution.Id)">مصوبهٔ @PersianText.Digits(resolution.Number): @resolution.Text</MudSelectItem>
@@ -53,9 +55,9 @@
             }
             @if (_serverError is not null)
             {
-                <MudAlert Severity="Severity.Error" Variant="Variant.Outlined" role="alert">@_serverError</MudAlert>
+                <MudAlert Class="ksc-form-span-2" Severity="Severity.Error" Variant="Variant.Outlined" role="alert">@_serverError</MudAlert>
             }
-        </MudStack>
+        </div>
     </DialogContent>
     <DialogActions>
         <MudButton Disabled="_saving" OnClick="Cancel">انصراف</MudButton>
@@ -119,7 +121,7 @@
         _ownerError = _ownerId is null || _ownerId == Guid.Empty ? "مسئول را انتخاب کنید." : null;
         _dateError = _due is null ? "سررسید را انتخاب کنید." : null;
         if (_titleError is not null || _ownerError is not null || _dateError is not null) return;
-        if (_description?.Length > ActionItem.MaxDescriptionLength)
+        if (_description is not null && RichTextContent.ToPlainText(_description).Length > ActionItem.MaxDescriptionLength)
         {
             _serverError = "توضیحات بیش از حد طولانی است.";
             return;

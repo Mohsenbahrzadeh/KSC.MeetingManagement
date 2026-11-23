@@ -2,11 +2,9 @@ using KSC.MeetingManagement.Api.Observability;
 using KSC.MeetingManagement.Api.Authorization;
 using KSC.MeetingManagement.Api.Tenancy;
 using KSC.MeetingManagement.Application.Actions;
-using KSC.MeetingManagement.Application.Identity;
 using KSC.MeetingManagement.Application.Meetings;
 using KSC.MeetingManagement.Domain.Identity;
 using KSC.MeetingManagement.Domain.Meetings;
-using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
 namespace KSC.MeetingManagement.Api.Controllers;
@@ -23,12 +21,16 @@ public sealed record CancelActionRequest(long ExpectedLockVersion, string Reason
 
 [ApiController]
 [RequiresTenant]
-public sealed class ActionsController(ActionItemService actions, IAuthorizationService authorization, ICurrentUser user) : ControllerBase
+public sealed class ActionsController(ActionItemService actions) : ControllerBase
 {
     [HttpGet("api/v1/meetings/{meetingId:guid}/actions")]
     [HasPermission(Permissions.MeetingsView)]
-    public async Task<IActionResult> ListForMeeting(Guid meetingId, CancellationToken cancellationToken) =>
-        await actions.ListForMeetingAsync(meetingId, cancellationToken) is { } list ? Ok(list) : NotFound();
+    public async Task<IActionResult> ListForMeeting(Guid meetingId, CancellationToken cancellationToken)
+    {
+        if (!await actions.CanReadMeetingActionsAsync(meetingId, cancellationToken)) return NotFound();
+        var canManage = await CanManageAsync(meetingId);
+        return await actions.ListForMeetingAsync(meetingId, canManage, cancellationToken) is { } list ? Ok(list) : NotFound();
+    }
 
     [Audited("action.create", "action", "meetingId")]
     [HttpPost("api/v1/meetings/{meetingId:guid}/actions")]
@@ -45,6 +47,14 @@ public sealed class ActionsController(ActionItemService actions, IAuthorizationS
         {
             return Problem(ex.Message, statusCode: StatusCodes.Status422UnprocessableEntity);
         }
+    }
+
+    [HttpGet("api/v1/meetings/{meetingId:guid}/actions/{actionId:guid}")]
+    [HasPermission(Permissions.MeetingsView)]
+    public async Task<IActionResult> Get(Guid meetingId, Guid actionId, CancellationToken cancellationToken)
+    {
+        var item = await actions.GetForCallerAsync(meetingId, actionId, cancellationToken);
+        return item is null ? NotFound() : Ok(item);
     }
 
     [Audited("action.update", "action", "meetingId")]
@@ -64,7 +74,7 @@ public sealed class ActionsController(ActionItemService actions, IAuthorizationS
     public Task<IActionResult> Start(Guid meetingId, Guid actionId, ActionVersionRequest request, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(request);
-        return RunAsOwnerOrManager(canManage => actions.StartAsync(meetingId, actionId, request.ExpectedLockVersion, canManage, cancellationToken));
+        return RunAsOwnerOrManager(meetingId, canManage => actions.StartAsync(meetingId, actionId, request.ExpectedLockVersion, canManage, cancellationToken));
     }
 
     /// <summary>Records completion; allowed for the owner or a manager.</summary>
@@ -74,7 +84,7 @@ public sealed class ActionsController(ActionItemService actions, IAuthorizationS
     public Task<IActionResult> Complete(Guid meetingId, Guid actionId, CompleteActionRequest request, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(request);
-        return RunAsOwnerOrManager(canManage => actions.CompleteAsync(meetingId, actionId, request.ExpectedLockVersion, request.Note, canManage, cancellationToken));
+        return RunAsOwnerOrManager(meetingId, canManage => actions.CompleteAsync(meetingId, actionId, request.ExpectedLockVersion, request.Note, canManage, cancellationToken));
     }
 
     [Audited("action.cancel", "action", "meetingId")]
@@ -90,7 +100,7 @@ public sealed class ActionsController(ActionItemService actions, IAuthorizationS
     [HttpGet("api/v1/actions/mine")]
     [HasPermission(Permissions.MeetingsView)]
     public async Task<IActionResult> Mine(bool activeOnly = true, int skip = 0, int take = 50, CancellationToken cancellationToken = default) =>
-        Ok(await actions.QueryAsync(new ActionItemQuery(user.RequiredUserId, null, null, activeOnly, skip, take), cancellationToken));
+        Ok(await actions.MineAsync(activeOnly, skip, take, cancellationToken));
 
     /// <summary>Overdue report: active actions whose due day is before today in the organisation's time zone.</summary>
     [HttpGet("api/v1/actions/overdue")]
@@ -98,11 +108,10 @@ public sealed class ActionsController(ActionItemService actions, IAuthorizationS
     public async Task<IActionResult> Overdue(Guid? ownerUserId, int skip = 0, int take = 50, CancellationToken cancellationToken = default) =>
         Ok(await actions.OverdueAsync(ownerUserId, skip, take, cancellationToken));
 
-    private async Task<bool> CanManageAsync() =>
-        (await authorization.AuthorizeAsync(User, null, HasPermissionAttribute.PolicyPrefix + Permissions.ActionsManage)).Succeeded;
+    private Task<bool> CanManageAsync(Guid meetingId) => actions.CanManageAsync(meetingId, HttpContext.RequestAborted);
 
-    private async Task<IActionResult> RunAsOwnerOrManager(Func<bool, Task<ActionItemDto?>> action) =>
-        await Run(async () => await action(await CanManageAsync()));
+    private async Task<IActionResult> RunAsOwnerOrManager(Guid meetingId, Func<bool, Task<ActionItemDto?>> action) =>
+        await Run(async () => await action(await CanManageAsync(meetingId)));
 
     private async Task<IActionResult> Run(Func<Task<ActionItemDto?>> action)
     {

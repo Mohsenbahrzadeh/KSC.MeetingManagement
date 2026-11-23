@@ -7,16 +7,17 @@
 
 <MudDialog>
     <DialogContent>
-        <MudStack Spacing="2">
-            <MudTextField @bind-Value="_text" Label="متن مصوبه" Lines="4" Required="true" MaxLength="Resolution.MaxTextLength" Disabled="_saving"
-                          Error="@(_validationError is not null)" ErrorText="@_validationError" />
+        <div class="ksc-form-grid">
+            <div class="ksc-form-span-2">
+                <KscRichTextEditor @bind-Value="_text" Label="متن مصوبه" MaxLength="Resolution.MaxTextLength" Disabled="_saving" Error="@_validationError" @ref="_editor" />
+            </div>
             @if (_agendaError is not null)
             {
-                <MudAlert Severity="Severity.Warning" Variant="Variant.Outlined" role="alert">@_agendaError</MudAlert>
+                <MudAlert Class="ksc-form-span-2" Severity="Severity.Warning" Variant="Variant.Outlined" role="alert">@_agendaError</MudAlert>
             }
             else
             {
-                <MudSelect T="Guid?" @bind-Value="_agendaItemId" Label="موضوع دستور جلسه (اختیاری)" Clearable="true" Disabled="_saving">
+                <MudSelect Class="ksc-form-span-2" T="Guid?" @bind-Value="_agendaItemId" Label="موضوع دستور جلسه (اختیاری)" Clearable="true" Disabled="_saving">
                     @foreach (var item in _agendaItems)
                     {
                         <MudSelectItem T="Guid?" Value="@((Guid?)item.Id)">@item.Title</MudSelectItem>
@@ -25,7 +26,7 @@
             }
             @if (_serverError is not null)
             {
-                <MudAlert Severity="Severity.Error" Variant="Variant.Outlined" role="alert">
+                <MudAlert Class="ksc-form-span-2" Severity="Severity.Error" Variant="Variant.Outlined" role="alert">
                     @_serverError
                     @if (_conflict)
                     {
@@ -33,7 +34,7 @@
                     }
                 </MudAlert>
             }
-        </MudStack>
+        </div>
     </DialogContent>
     <DialogActions>
         <MudButton OnClick="Cancel" Disabled="_saving">انصراف</MudButton>
@@ -50,6 +51,7 @@
     private string? _serverError;
     private bool _saving;
     private bool _conflict;
+    private KscRichTextEditor? _editor;
 
     [CascadingParameter] private IMudDialogInstance Dialog { get; set; } = default!;
     [Parameter, EditorRequired] public Guid MeetingId { get; set; }
@@ -69,9 +71,13 @@
 
     private async Task SaveAsync()
     {
-        _validationError = string.IsNullOrWhiteSpace(_text) ? "متن مصوبه را وارد کنید." :
-            _text.Trim().Length > Resolution.MaxTextLength ? "متن مصوبه بیش از حد طولانی است." : null;
-        if (_validationError is not null) return;
+        _validationError = string.IsNullOrWhiteSpace(RichTextContent.ToPlainText(_text)) ? "متن مصوبه را وارد کنید." :
+            RichTextContent.ToPlainText(_text).Length > Resolution.MaxTextLength ? "متن مصوبه بیش از حد طولانی است." : null;
+        if (_validationError is not null)
+        {
+            await _editor!.FocusAsync();
+            return;
+        }
         _serverError = null;
         _saving = true;
         try

@@ -2,6 +2,7 @@ using System.Net;
 using System.Text;
 using System.Text.Json;
 using Bunit;
+using KSC.MeetingManagement.Web.Components.Common;
 using KSC.MeetingManagement.Web.Components.Meetings;
 using KSC.MeetingManagement.Web.Components.Pages;
 using KSC.MeetingManagement.Web.Services;
@@ -90,12 +91,32 @@ public sealed class MeetingDetailsPageTests : BunitContext, IAsyncLifetime
         Assert.Contains("آنلاین", page.Markup);
         Assert.Contains("۰۹:۰۰–۱۰:۰۰", page.Markup);
         Assert.Contains("بودجه", page.Markup);
+        Assert.Single(page.FindAll(".ksc-meeting-console-header"));
+        Assert.Equal(4, page.FindAll(".ksc-meeting-section-tab").Count);
+        Assert.Single(page.FindAll(".ksc-meeting-section-content"));
+        Assert.Empty(page.FindAll(".ksc-meeting-section-card, .ksc-meeting-hero, .ksc-meeting-workspace"));
         var buttons = Buttons(page).ToList();
         Assert.Contains("شروع جلسه", buttons);
-        Assert.Contains("به تعویق انداختن", buttons);
-        Assert.Contains("لغو جلسه", buttons);
         Assert.Contains("ورود به اتاق", buttons);
         Assert.DoesNotContain("پایان جلسه", buttons);
+        Assert.Contains("به تعویق انداختن", Buttons(page));
+        Assert.Contains("لغو جلسه", Buttons(page));
+        Assert.DoesNotContain("شرکت‌کنندگان", page.FindAll(".ksc-meeting-section-content").SelectMany(e => e.QuerySelectorAll("h6")).Select(e => e.TextContent.Trim()));
+    }
+
+    [Fact]
+    public void Section_navigation_shows_only_the_selected_meeting_content()
+    {
+        _respond = _ => Json(Meeting("Scheduled"));
+        var (page, _) = RenderPage();
+        page.WaitForAssertion(() => Assert.Contains("هیئت مدیره", page.Markup));
+
+        page.FindAll(".ksc-meeting-section-tab").Single(b => b.TextContent.Contains("شرکت‌کنندگان", StringComparison.Ordinal)).Click();
+
+        page.WaitForAssertion(() => Assert.Contains("افزودن عضو", page.Markup));
+        Assert.DoesNotContain("برای این جلسه توضیحی ثبت نشده است", page.Markup);
+        Assert.Contains("active", page.FindAll(".ksc-meeting-section-tab").Single(b => b.TextContent.Contains("شرکت‌کنندگان", StringComparison.Ordinal)).ClassName);
+        Assert.Single(page.FindAll(".ksc-meeting-section-content"));
     }
 
     [Theory]
@@ -214,7 +235,7 @@ public sealed class MeetingDetailsPageTests : BunitContext, IAsyncLifetime
         provider.WaitForAssertion(() => Assert.Contains("دلیل لغو را بنویسید.", provider.Markup, StringComparison.Ordinal));
         Assert.Empty(_requests);
 
-        provider.Find("textarea").Input("  تداخل برنامه  ");
+        await provider.InvokeAsync(() => provider.FindComponent<KscRichTextEditor>().Instance.ContentChanged("تداخل برنامه", 12));
         await provider.InvokeAsync(() => provider.FindAll("button").Single(b => b.TextContent.Trim() == "لغو جلسه").Click());
 
         provider.WaitForAssertion(() => Assert.Single(_requests));

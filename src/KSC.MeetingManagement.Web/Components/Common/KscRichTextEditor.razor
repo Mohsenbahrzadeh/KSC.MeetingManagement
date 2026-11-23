@@ -1,0 +1,130 @@
+@using KSC.MeetingManagement.Domain.Meetings
+@using KSC.MeetingManagement.Calendar
+@implements IAsyncDisposable
+@inject IJSRuntime JS
+
+<section class="ksc-rich-editor @(Error is null ? "" : "has-error")" aria-label="@Label">
+    <div class="ksc-rich-editor-topline">
+        <label class="ksc-rich-editor-label" for="@_editorId">@Label</label>
+        <span class="ksc-rich-editor-hint">قالب‌بندی ساده و استاندارد</span>
+    </div>
+    <div class="ksc-rich-editor-frame">
+        <div class="ksc-rich-toolbar" role="toolbar" aria-label="قالب‌بندی متن" aria-controls="@_editorId">
+            <div class="ksc-rich-toolbar-group" role="group" aria-label="سبک متن">
+                <button type="button" title="پاراگراف" aria-label="پاراگراف" disabled="@Disabled" @onmousedown:preventDefault="true" @onclick="ParagraphAsync"><span>¶</span></button>
+                <button type="button" title="تیتر" aria-label="تیتر" disabled="@Disabled" @onmousedown:preventDefault="true" @onclick="HeadingAsync"><span>H</span></button>
+            </div>
+            <span class="ksc-rich-toolbar-divider" aria-hidden="true"></span>
+            <div class="ksc-rich-toolbar-group" role="group" aria-label="قالب‌بندی">
+                <button type="button" title="درشت" aria-label="درشت" disabled="@Disabled" @onmousedown:preventDefault="true" @onclick="BoldAsync"><MudIcon Icon="@Icons.Material.Filled.FormatBold" /></button>
+                <button type="button" title="مورب" aria-label="مورب" disabled="@Disabled" @onmousedown:preventDefault="true" @onclick="ItalicAsync"><MudIcon Icon="@Icons.Material.Filled.FormatItalic" /></button>
+                <button type="button" title="زیرخط‌دار" aria-label="زیرخط‌دار" disabled="@Disabled" @onmousedown:preventDefault="true" @onclick="UnderlineAsync"><MudIcon Icon="@Icons.Material.Filled.FormatUnderlined" /></button>
+            </div>
+            <span class="ksc-rich-toolbar-divider" aria-hidden="true"></span>
+            <div class="ksc-rich-toolbar-group" role="group" aria-label="فهرست و نقل‌قول">
+                <button type="button" title="فهرست نشانه‌دار" aria-label="فهرست نشانه‌دار" disabled="@Disabled" @onmousedown:preventDefault="true" @onclick="BulletListAsync"><MudIcon Icon="@Icons.Material.Filled.FormatListBulleted" /></button>
+                <button type="button" title="فهرست شماره‌دار" aria-label="فهرست شماره‌دار" disabled="@Disabled" @onmousedown:preventDefault="true" @onclick="NumberListAsync"><MudIcon Icon="@Icons.Material.Filled.FormatListNumbered" /></button>
+                <button type="button" title="نقل‌قول" aria-label="نقل‌قول" disabled="@Disabled" @onmousedown:preventDefault="true" @onclick="QuoteAsync"><MudIcon Icon="@Icons.Material.Filled.FormatQuote" /></button>
+            </div>
+            <span class="ksc-rich-toolbar-spacer"></span>
+            <div class="ksc-rich-toolbar-group" role="group" aria-label="واگرد">
+                <button type="button" title="واگرد" aria-label="واگرد" disabled="@Disabled" @onmousedown:preventDefault="true" @onclick="UndoAsync"><MudIcon Icon="@Icons.Material.Filled.Undo" /></button>
+                <button type="button" title="ازنو" aria-label="ازنو" disabled="@Disabled" @onmousedown:preventDefault="true" @onclick="RedoAsync"><MudIcon Icon="@Icons.Material.Filled.Redo" /></button>
+            </div>
+        </div>
+        <div id="@_editorId" class="ksc-rich-editor-content" contenteditable="@(!Disabled)" role="textbox" aria-multiline="true" aria-label="@Label" aria-describedby="@(_errorId)" dir="rtl" tabindex="0"></div>
+    </div>
+    <div class="ksc-rich-editor-footer">
+        @if (Error is not null)
+        {
+            <span class="ksc-rich-editor-error" id="@_errorId" role="alert">@Error</span>
+        }
+        else
+        {
+            <span class="ksc-rich-editor-help">برای چسباندن متن، قالب‌بندی ناخواسته حذف می‌شود.</span>
+        }
+        <span class="ksc-rich-editor-count" aria-live="polite">@PersianText.Digits(_textLength) / @PersianText.Digits(MaxLength)</span>
+    </div>
+</section>
+
+@code {
+    private static int _nextId;
+    private readonly int _id = Interlocked.Increment(ref _nextId);
+    private string _editorId => $"ksc-rich-editor-{_id}";
+    private string _errorId => $"ksc-rich-editor-error-{_id}";
+    private IJSObjectReference? _module;
+    private DotNetObjectReference<KscRichTextEditor>? _self;
+    private string? _editorValue;
+    private int _textLength;
+
+    [Parameter] public string Value { get; set; } = string.Empty;
+    [Parameter] public EventCallback<string> ValueChanged { get; set; }
+    [Parameter] public string Label { get; set; } = "متن";
+    [Parameter] public int MaxLength { get; set; } = 4000;
+    [Parameter] public bool Disabled { get; set; }
+    [Parameter] public string? Error { get; set; }
+
+    protected override void OnParametersSet()
+    {
+        _textLength = RichTextContent.ToPlainText(Value).Length;
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            _module = await JS.InvokeAsync<IJSObjectReference>("import", "./ksc-rich-text.js");
+            _self = DotNetObjectReference.Create(this);
+            await _module.InvokeVoidAsync("attach", _editorId, RichTextContent.ToDisplayHtml(Value, MaxLength), _self);
+            _editorValue = Value;
+        }
+        else if (_module is not null && _editorValue != Value)
+        {
+            await _module.InvokeVoidAsync("setContent", _editorId, RichTextContent.ToDisplayHtml(Value, MaxLength));
+            _editorValue = Value;
+        }
+    }
+
+    [JSInvokable]
+    public async Task ContentChanged(string html, int textLength)
+    {
+        _textLength = textLength;
+        _editorValue = html;
+        await ValueChanged.InvokeAsync(html);
+        StateHasChanged();
+    }
+
+    private async Task FormatAsync(string command, string? value = null)
+    {
+        if (_module is not null && !Disabled)
+            await _module.InvokeVoidAsync("format", _editorId, command, value);
+    }
+
+    private Task ParagraphAsync() => FormatAsync("formatBlock", "p");
+    private Task HeadingAsync() => FormatAsync("formatBlock", "h3");
+    private Task BoldAsync() => FormatAsync("bold");
+    private Task ItalicAsync() => FormatAsync("italic");
+    private Task UnderlineAsync() => FormatAsync("underline");
+    private Task BulletListAsync() => FormatAsync("insertUnorderedList");
+    private Task NumberListAsync() => FormatAsync("insertOrderedList");
+    private Task QuoteAsync() => FormatAsync("formatBlock", "blockquote");
+    private Task UndoAsync() => FormatAsync("undo");
+    private Task RedoAsync() => FormatAsync("redo");
+
+    public async Task FocusAsync()
+    {
+        if (_module is not null)
+            await _module.InvokeVoidAsync("focus", _editorId);
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        _self?.Dispose();
+        if (_module is not null)
+        {
+            try { await _module.InvokeVoidAsync("detach", _editorId); }
+            catch (JSDisconnectedException) { }
+            await _module.DisposeAsync();
+        }
+    }
+}

@@ -203,12 +203,13 @@ public sealed class Minutes
             throw new MeetingDomainException("Minutes text is required.");
         }
 
-        if (content.Length > MaxContentLength)
+        var sanitized = RichTextContent.Sanitize(content, MaxContentLength);
+        if (string.IsNullOrWhiteSpace(RichTextContent.ToPlainText(sanitized)))
         {
-            throw new MeetingDomainException($"Minutes text cannot exceed {MaxContentLength} characters.");
+            throw new MeetingDomainException("Minutes text is required.");
         }
 
-        return content.Trim();
+        return sanitized;
     }
 
     private static string? NormalizeComment(string? comment, bool required)
@@ -218,8 +219,9 @@ public sealed class Minutes
             return required ? throw new MeetingDomainException("A comment is required.") : null;
         }
 
-        return comment.Trim().Length > MaxCommentLength
-            ? throw new MeetingDomainException($"A comment cannot exceed {MaxCommentLength} characters.")
-            : comment.Trim();
+        var sanitized = RichTextContent.Sanitize(comment, MaxCommentLength);
+        return string.IsNullOrWhiteSpace(RichTextContent.ToPlainText(sanitized))
+            ? required ? throw new MeetingDomainException("A comment is required.") : null
+            : sanitized;
     }
 }

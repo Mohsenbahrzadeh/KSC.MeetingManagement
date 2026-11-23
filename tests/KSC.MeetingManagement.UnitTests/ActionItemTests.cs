@@ -100,6 +100,18 @@ public class ActionItemTests
     }
 
     [Fact]
+    public void Rich_description_and_completion_note_are_sanitized()
+    {
+        var a = New();
+        a.Update("پیگیری", "<p><strong>شرح</strong><script>bad()</script></p>", Owner, Due);
+        a.Complete(Owner, "<p><em>انجام شد</em></p>", Now);
+
+        Assert.Equal("<p><strong>شرح</strong></p>", a.Description);
+        Assert.Equal("<p><em>انجام شد</em></p>", a.Note);
+        Assert.Equal("شرح", RichTextContent.ToPlainText(a.Description));
+    }
+
+    [Fact]
     public void Validation_rules()
     {
         Assert.Throws<MeetingDomainException>(() => new ActionItem(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), null, " ", null, Owner, Due));

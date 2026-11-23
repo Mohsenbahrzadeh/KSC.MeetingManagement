@@ -10,58 +10,74 @@
     <MudDialogProvider />
     <MudSnackbarProvider />
 
-    <MudLayout>
+    <MudLayout dir="rtl">
         <MudAppBar Elevation="0" Class="ksc-appbar">
-            <MudIconButton Icon="@Icons.Material.Filled.Menu" Class="@(Session.IsSignedIn ? null : "d-none")" Color="Color.Inherit" Edge="Edge.Start"
-                           aria-label="باز و بسته کردن منو" OnClick="ToggleDrawer" />
-            <a href="/" class="ksc-brand" style="color: inherit; text-decoration: none;">
-                <span class="ksc-brand-mark" aria-hidden="true">
-                    <MudIcon Icon="@Icons.Material.Filled.Groups" Size="Size.Small" />
-                </span>
-                <span>مدیریت جلسات</span>
-            </a>
-            <MudSpacer />
-            <MudTooltip Text="@(_dark ? "حالت روشن" : "حالت تاریک")">
-                <MudIconButton Icon="@(_dark ? Icons.Material.Filled.LightMode : Icons.Material.Filled.DarkMode)" Color="Color.Inherit"
-                               aria-label="تغییر حالت روشن و تاریک" OnClick="ToggleDark" />
-            </MudTooltip>
-            @if (Session.IsSignedIn && Session.User is { } user)
+            @if (Session.IsSignedIn)
             {
-                <MudMenu Icon="@Icons.Material.Filled.AccountCircle" Color="Color.Inherit" AriaLabel="حساب کاربری" Dense="true"
-                         AnchorOrigin="Origin.BottomLeft" TransformOrigin="Origin.TopLeft">
-                    <div class="px-4 py-2 ksc-account">
-                        <MudText Typo="Typo.subtitle2">@user.DisplayName</MudText>
-                        <MudText Typo="Typo.caption" Color="Color.Secondary">@user.Email</MudText>
-                    </div>
-                    <MudDivider />
-                    @if (user.Memberships.Count > 1)
-                    {
-                        <MudText Typo="Typo.overline" Class="px-4 pt-2">سازمان</MudText>
-                        @foreach (var membership in user.Memberships)
-                        {
-                            var id = membership.TenantId;
-                            <MudMenuItem OnClick="() => Session.SelectTenantAsync(id)"
-                                         Icon="@(id == Session.TenantId ? Icons.Material.Filled.CheckCircle : Icons.Material.Outlined.Circle)">@membership.TenantName</MudMenuItem>
-                        }
-                        <MudDivider />
-                    }
-                    else if (Session.CurrentTenant is { } only)
-                    {
-                        <MudText Typo="Typo.body2" Class="px-4 py-2">@only.TenantName</MudText>
-                        <MudDivider />
-                    }
-                    <MudMenuItem OnClick="SignOutAsync" Icon="@Icons.Material.Filled.Logout">خروج</MudMenuItem>
-                </MudMenu>
+                <MudIconButton Icon="@Icons.Material.Filled.Menu" Class="ksc-menu-toggle" Color="Color.Inherit" Edge="Edge.Start"
+                               aria-label="باز و بسته کردن منو" OnClick="ToggleDrawer" />
             }
+            <a href="/" class="ksc-brand" aria-label="مدیریت جلسات، خانه">
+                <span class="ksc-brand-mark" aria-hidden="true"><MudIcon Icon="@Icons.Material.Filled.Groups" Size="Size.Small" /></span>
+                <span class="ksc-brand-copy"><strong>مدیریت جلسات</strong><small>فضای کار تیمی</small></span>
+            </a>
+            @if (Session.IsSignedIn)
+            {
+                <div class="ksc-top-context"><span class="ksc-top-context-dot"></span>@(Session.CurrentTenant?.TenantName ?? "فضای کاری")</div>
+            }
+            <MudSpacer />
+            <div class="ksc-top-actions">
+                <MudTooltip Text="@(_dark ? "حالت روشن" : "حالت تاریک")">
+                    <MudIconButton Icon="@(_dark ? Icons.Material.Filled.LightMode : Icons.Material.Filled.DarkMode)" Color="Color.Inherit"
+                                   Class="ksc-icon-action" aria-label="تغییر حالت روشن و تاریک" OnClick="ToggleDark" />
+                </MudTooltip>
+                @if (Session.IsSignedIn && Session.User is { } user)
+                {
+                    <MudMenu Icon="@Icons.Material.Filled.AccountCircle" Color="Color.Inherit" Class="ksc-user-menu" AriaLabel="حساب کاربری" Dense="true"
+                             AnchorOrigin="Origin.BottomLeft" TransformOrigin="Origin.TopLeft">
+                        <div class="px-4 py-2 ksc-account">
+                            <MudText Typo="Typo.subtitle2">@user.DisplayName</MudText>
+                            <MudText Typo="Typo.caption" Color="Color.Secondary">@user.Email</MudText>
+                        </div>
+                        <MudDivider />
+                        @if (user.Memberships.Count > 1)
+                        {
+                            <MudText Typo="Typo.overline" Class="px-4 pt-2">سازمان</MudText>
+                            @foreach (var membership in user.Memberships)
+                            {
+                                var id = membership.TenantId;
+                                <MudMenuItem OnClick="() => Session.SelectTenantAsync(id)"
+                                             Icon="@(id == Session.TenantId ? Icons.Material.Filled.CheckCircle : Icons.Material.Outlined.Circle)">@membership.TenantName</MudMenuItem>
+                            }
+                            <MudDivider />
+                        }
+                        else if (Session.CurrentTenant is { } only)
+                        {
+                            <MudText Typo="Typo.body2" Class="px-4 py-2">@only.TenantName</MudText>
+                            <MudDivider />
+                        }
+                        <MudMenuItem OnClick="SignOutAsync" Icon="@Icons.Material.Filled.Logout">خروج</MudMenuItem>
+                    </MudMenu>
+                }
+            </div>
         </MudAppBar>
 
         @if (Session.IsSignedIn)
         {
-            <MudDrawer @bind-Open="_drawerOpen" Class="ksc-drawer" Variant="DrawerVariant.Responsive" Breakpoint="Breakpoint.Md"
+            <MudDrawer @bind-Open="_drawerOpen" Class="ksc-drawer" Variant="DrawerVariant.Responsive" Anchor="Anchor.Start" Breakpoint="Breakpoint.Md"
                        ClipMode="DrawerClipMode.Always" Elevation="0" aria-label="منوی اصلی">
-                <nav aria-label="منوی اصلی" class="pt-3">
+                <nav aria-label="منوی اصلی" class="ksc-navigation">
+                    <div class="ksc-nav-label">فضای کاری</div>
                     <MudNavMenu>
-                        @foreach (var item in NavItems.Main)
+                        @foreach (var item in NavItems.Main.Take(4))
+                        {
+                            <MudNavLink Href="@item.Href" Icon="@item.Icon"
+                                        Match="@(item.ExactMatch ? NavLinkMatch.All : NavLinkMatch.Prefix)">@item.Title</MudNavLink>
+                        }
+                    </MudNavMenu>
+                    <div class="ksc-nav-label ksc-nav-label-secondary">ابزارها</div>
+                    <MudNavMenu>
+                        @foreach (var item in NavItems.Main.Skip(4))
                         {
                             <MudNavLink Href="@item.Href" Icon="@item.Icon"
                                         Match="@(item.ExactMatch ? NavLinkMatch.All : NavLinkMatch.Prefix)">@item.Title</MudNavLink>
@@ -75,12 +91,20 @@
                             <MudNavLink Href="/reports" Icon="@Icons.Material.Filled.Assessment">گزارش‌ها</MudNavLink>
                         }
                     </MudNavMenu>
+                    <div class="ksc-nav-footer">
+                        <span class="ksc-user-avatar" aria-hidden="true">@UserInitial</span>
+                        <div class="ksc-nav-user-copy">
+                            <strong>@(Session.User?.DisplayName ?? "کاربر")</strong>
+                            <span>@(Session.CurrentTenant?.TenantName ?? "فضای کاری")</span>
+                        </div>
+                        <MudIcon Icon="@Icons.Material.Filled.VerifiedUser" Class="ksc-nav-user-status" aria-label="حساب فعال" />
+                    </div>
                 </nav>
             </MudDrawer>
         }
 
         <MudMainContent>
-            <MudContainer MaxWidth="MaxWidth.ExtraLarge" Class="py-6">
+            <MudContainer MaxWidth="MaxWidth.ExtraLarge" Class="ksc-page-container">
                 @if (!Session.Initialized)
                 {
                     <div class="ksc-loading" role="status" aria-label="در حال بارگذاری"><MudProgressCircular Indeterminate="true" /></div>
@@ -105,6 +129,7 @@
     private bool CanViewReports => Session.CurrentTenant?.Roles.Any(r => KSC.MeetingManagement.Domain.Identity.RolePermissions.Grants(r, KSC.MeetingManagement.Domain.Identity.Permissions.ReportsView)) == true;
     private bool _drawerOpen = true;
     private bool _dark;
+    private string UserInitial => Session.User?.DisplayName is { Length: > 0 } name ? name[..1] : "ک";
 
     private bool OnLoginPage =>
         Navigation.ToBaseRelativePath(Navigation.Uri).StartsWith("login", StringComparison.OrdinalIgnoreCase);

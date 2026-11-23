@@ -43,6 +43,13 @@ public static class PersistenceExtensions
             LobbyForGuests = !string.Equals(configuration["Media:LobbyForGuests"], "false", StringComparison.OrdinalIgnoreCase),
             LobbyForMembers = string.Equals(configuration["Media:LobbyForMembers"], "true", StringComparison.OrdinalIgnoreCase),
             ApiUrl = configuration["Media:ApiUrl"],
+            RecordingPath = configuration["Media:RecordingPath"],
+            TranscriptionRecordingPath = configuration["Media:TranscriptionRecordingPath"],
+            TranscriptionOutputPath = configuration["Media:TranscriptionOutputPath"],
+            TranscriptionModelPath = configuration["Media:TranscriptionModelPath"],
+            TranscriptionLanguage = configuration["Media:TranscriptionLanguage"] ?? "fa",
+            FfmpegPath = configuration["Media:FfmpegPath"] ?? "ffmpeg",
+            TranscriptionFileWaitSeconds = IntOr(configuration["Media:TranscriptionFileWaitSeconds"], 60),
         };
 
         services.TryAddSingleton(options);
@@ -65,6 +72,7 @@ public static class PersistenceExtensions
         services.TryAddSingleton<IMediaRoomControl>(sp => sp.GetRequiredService<MediaOptions>().IsComplete
             ? new LiveKitRoomControl(new HttpClient { Timeout = TimeSpan.FromSeconds(5) }, sp.GetRequiredService<MediaOptions>(), sp.GetRequiredService<TimeProvider>())
             : new NoMediaRoomControl());
+        services.AddScoped<IMeetingTranscriptionService, LocalMeetingTranscriptionService>();
         return services;
     }
 

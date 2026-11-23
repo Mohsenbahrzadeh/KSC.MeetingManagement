@@ -25,6 +25,10 @@ public sealed class MeetingDomainException(string message) : InvalidOperationExc
 /// </summary>
 public sealed class Meeting
 {
+    public const int MaxTitleLength = 300;
+    public const int MaxDescriptionLength = 4000;
+    public const int MaxCancellationReasonLength = 1000;
+
     private static readonly Dictionary<MeetingStatus, MeetingStatus[]> Transitions = new()
     {
         [MeetingStatus.Draft] = [MeetingStatus.Scheduled, MeetingStatus.Cancelled],
@@ -126,7 +130,7 @@ public sealed class Meeting
     {
         EnsureEditable();
         Title = RequireTitle(title);
-        Description = description?.Trim();
+        Description = NormalizeRichText(description, MaxDescriptionLength);
         Mode = mode;
         Version++;
     }
@@ -185,13 +189,14 @@ public sealed class Meeting
 
     public void Cancel(string reason)
     {
-        if (string.IsNullOrWhiteSpace(reason))
+        var normalized = NormalizeRichText(reason, MaxCancellationReasonLength);
+        if (normalized is null)
         {
             throw new MeetingDomainException("A cancellation reason is required.");
         }
 
         MoveTo(MeetingStatus.Cancelled);
-        CancellationReason = reason.Trim();
+        CancellationReason = normalized;
         Version++;
     }
 
@@ -220,6 +225,18 @@ public sealed class Meeting
             throw new MeetingDomainException("Meeting title is required.");
         }
 
+        if (title.Trim().Length > MaxTitleLength)
+        {
+            throw new MeetingDomainException($"Meeting title cannot exceed {MaxTitleLength} characters.");
+        }
+
         return title.Trim();
+    }
+
+    private static string? NormalizeRichText(string? value, int maxLength)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return null;
+        var clean = RichTextContent.Sanitize(value, maxLength);
+        return string.IsNullOrWhiteSpace(RichTextContent.ToPlainText(clean)) ? null : clean;
     }
 }

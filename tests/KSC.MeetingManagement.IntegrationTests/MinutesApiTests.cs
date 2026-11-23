@@ -69,7 +69,12 @@ public sealed class MinutesApiTests : IClassFixture<WebApplicationFactory<Progra
     private async Task<Guid> CreateMeeting()
     {
         var response = await Send(HttpMethod.Post, "/api/v1/meetings", _tenantA, _organizer, new { title = "Board", mode = "Online" });
-        return (await response.Content.ReadFromJsonAsync<MeetingDto>(Json))!.Id;
+        var meetingId = (await response.Content.ReadFromJsonAsync<MeetingDto>(Json))!.Id;
+        foreach (var userId in new[] { _secretary, _approver, _participant })
+        {
+            await Send(HttpMethod.Post, $"/api/v1/meetings/{meetingId}/participants/internal", _tenantA, _organizer, new { userId });
+        }
+        return meetingId;
     }
 
     private static string Url(Guid id, string suffix = "") => $"/api/v1/meetings/{id}/minutes{suffix}";

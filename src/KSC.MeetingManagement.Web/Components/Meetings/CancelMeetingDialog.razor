@@ -1,19 +1,21 @@
 @using KSC.MeetingManagement.Web.Services
+@using KSC.MeetingManagement.Domain.Meetings
 @implements IDisposable
 @inject MeetingsApiClient Api
 @inject ISnackbar Snackbar
 
 <MudDialog>
     <DialogContent>
-        <MudStack Spacing="2">
-            <MudText>لغو جلسه برگشت‌پذیر نیست و به شرکت‌کنندگان اطلاع داده می‌شود.</MudText>
-            <MudTextField @bind-Value="_reason" Label="دلیل لغو" Required="true" Lines="3" Immediate="true" MaxLength="500" Disabled="_saving"
-                          Error="@(_error is not null)" ErrorText="@_error" />
+        <div class="ksc-form-grid">
+            <MudText Class="ksc-form-span-2">لغو جلسه برگشت‌پذیر نیست و به شرکت‌کنندگان اطلاع داده می‌شود.</MudText>
+            <div class="ksc-form-span-2">
+                <KscRichTextEditor @bind-Value="_reason" Label="دلیل لغو" MaxLength="Meeting.MaxCancellationReasonLength" Disabled="_saving" Error="@_error" />
+            </div>
             @if (_serverError is not null)
             {
-                <MudAlert Severity="Severity.Error" Variant="Variant.Outlined" role="alert">@_serverError</MudAlert>
+                <MudAlert Class="ksc-form-span-2" Severity="Severity.Error" Variant="Variant.Outlined" role="alert">@_serverError</MudAlert>
             }
-        </MudStack>
+        </div>
     </DialogContent>
     <DialogActions>
         <MudButton OnClick="Cancel" Disabled="_saving">انصراف</MudButton>
@@ -37,7 +39,8 @@
     private async Task ConfirmAsync()
     {
         _serverError = null;
-        _error = string.IsNullOrWhiteSpace(_reason) ? "دلیل لغو را بنویسید." : null;
+        _error = string.IsNullOrWhiteSpace(RichTextContent.ToPlainText(_reason)) ? "دلیل لغو را بنویسید." :
+            RichTextContent.ToPlainText(_reason).Length > Meeting.MaxCancellationReasonLength ? "دلیل لغو بیش از حد طولانی است." : null;
         if (_error is not null)
         {
             return;
@@ -46,7 +49,7 @@
         _saving = true;
         try
         {
-            var result = await Api.CancelAsync(MeetingId, Version, _reason.Trim(), _cts.Token);
+            var result = await Api.CancelAsync(MeetingId, Version, _reason, _cts.Token);
             if (result.Succeeded && result.Value is { } saved)
             {
                 Snackbar.Add("جلسه لغو شد.", Severity.Success);

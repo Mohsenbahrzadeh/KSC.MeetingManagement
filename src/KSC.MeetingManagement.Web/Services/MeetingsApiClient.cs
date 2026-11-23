@@ -1,4 +1,5 @@
 using System.Net.Http.Json;
+using System.Globalization;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using KSC.MeetingManagement.Application.Meetings;
@@ -72,11 +73,32 @@ public sealed class MeetingsApiClient(IHttpClientFactory httpClientFactory)
 
     /// <summary>Lists meetings, optionally filtered by status, one page at a time.</summary>
     public Task<ApiResult<List<MeetingDto>>> ListAsync(MeetingStatus? status, int skip, int take, CancellationToken cancellationToken) =>
-        SendAsync<List<MeetingDto>>(
-            c => c.GetAsync(
-                new Uri($"api/v1/meetings?skip={skip}&take={take}" + (status is { } s ? $"&status={s}" : string.Empty), UriKind.Relative),
-                cancellationToken),
+        ListAsync(null, null, status, skip, take, cancellationToken);
+
+    /// <summary>Lists meetings overlapping a time range, optionally filtered by status, one page at a time.</summary>
+    public Task<ApiResult<List<MeetingDto>>> ListAsync(
+        DateTimeOffset? from, DateTimeOffset? to, MeetingStatus? status, int skip, int take, CancellationToken cancellationToken)
+    {
+        var query = $"skip={skip}&take={take}";
+        if (from is { } start)
+        {
+            query += $"&from={Uri.EscapeDataString(start.ToString("O", CultureInfo.InvariantCulture))}";
+        }
+
+        if (to is { } end)
+        {
+            query += $"&to={Uri.EscapeDataString(end.ToString("O", CultureInfo.InvariantCulture))}";
+        }
+
+        if (status is { } value)
+        {
+            query += $"&status={value}";
+        }
+
+        return SendAsync<List<MeetingDto>>(
+            c => c.GetAsync(new Uri($"api/v1/meetings?{query}", UriKind.Relative), cancellationToken),
             cancellationToken);
+    }
 
     private Task<ApiResult<MeetingDto>> SendAsync(Func<HttpClient, Task<HttpResponseMessage>> send, CancellationToken cancellationToken) =>
         SendAsync<MeetingDto>(send, cancellationToken);

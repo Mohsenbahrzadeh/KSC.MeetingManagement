@@ -9,12 +9,10 @@
 
 <PageTitle>کاربران | مدیریت جلسات</PageTitle>
 
-<MudText Typo="Typo.h4" Class="ksc-page-title" tabindex="-1">کاربران و نقش‌ها</MudText>
-
-<MudStack Row="true" Class="mb-3">
-    <MudSpacer />
-    <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="() => ShowAsync(null)">کاربر جدید</MudButton>
-</MudStack>
+<div class="ksc-page-heading">
+    <div><span class="ksc-section-eyebrow">مدیریت دسترسی</span><MudText Typo="Typo.h4" Class="ksc-page-title" tabindex="-1">کاربران و نقش‌ها</MudText><p class="ksc-page-sub">اعضا و سطح دسترسی آن‌ها در فضای کاری را مدیریت کنید.</p></div>
+    <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.PersonAdd" OnClick="() => ShowAsync(null)">کاربر جدید</MudButton>
+</div>
 
 <StatePanel State="_panel" ErrorText="@_error" OnRetry="LoadAsync" EmptyText="کاربری پیدا نشد.">
     <MudTable Items="_items" Dense="true" Hover="true" Elevation="0">

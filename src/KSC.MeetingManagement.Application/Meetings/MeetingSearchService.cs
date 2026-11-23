@@ -1,9 +1,15 @@
 using KSC.MeetingManagement.Application.Identity;
 using KSC.MeetingManagement.Application.Tenants;
+using KSC.MeetingManagement.Domain.Identity;
 
 namespace KSC.MeetingManagement.Application.Meetings;
 
-public sealed class MeetingSearchService(IMeetingSearchRepository repository, IMeetingContentIndex index, ITenantContext tenant, ICurrentUser currentUser)
+public sealed class MeetingSearchService(
+    IMeetingSearchRepository repository,
+    IMeetingContentIndex index,
+    ITenantContext tenant,
+    ICurrentUser currentUser,
+    IMembershipStore memberships)
 {
     public const int MaxQueryLength = 200;
     public const int MaxPageSize = 100;
@@ -42,7 +48,10 @@ public sealed class MeetingSearchService(IMeetingSearchRepository repository, IM
             await repository.CompleteChangesAsync(durableChanges.Select(change => change.ChangeId).ToArray(), cancellationToken);
         }
 
-        IReadOnlySet<Guid>? visibleIds = query.MaySeeAllMeetings
+        var membership = await memberships.FindAsync(tenantId, currentUser.RequiredUserId, cancellationToken);
+        var maySeeAll = query.MaySeeAllMeetings || membership?.HasRole(Roles.TenantOwner) == true
+            || membership?.HasRole(Roles.TenantAdministrator) == true;
+        IReadOnlySet<Guid>? visibleIds = maySeeAll
             ? null
             : await repository.GetVisibleMeetingIdsAsync(currentUser.RequiredUserId, maySeeAll: false, cancellationToken);
         return await index.SearchAsync(tenantId, visibleIds, text, skip, take, cancellationToken);

@@ -10,23 +10,27 @@
 
 <MudDialog>
     <DialogContent>
-        <MudStack Spacing="2">
-            <MudTextField @bind-Value="_title" Label="موضوع" Required="true" MaxLength="AgendaItem.MaxTitleLength" Disabled="_saving"
+        <div class="ksc-form-grid">
+            <MudTextField Class="ksc-form-span-2" @bind-Value="_title" Label="موضوع" Required="true" MaxLength="AgendaItem.MaxTitleLength" Disabled="_saving"
                           Error="@(_titleError is not null)" ErrorText="@_titleError" />
-            <MudTextField @bind-Value="_description" Label="توضیحات" Lines="3" MaxLength="AgendaItem.MaxDescriptionLength" Disabled="_saving" />
+            <div class="ksc-form-span-2">
+                <KscRichTextEditor @bind-Value="_description" Label="توضیحات موضوع" MaxLength="AgendaItem.MaxDescriptionLength" Disabled="_saving" />
+            </div>
             <MudNumericField T="int?" @bind-Value="_duration" Label="مدت (دقیقه)" Min="1" Max="AgendaItem.MaxDurationMinutes" Disabled="_saving"
                              Error="@(_durationError is not null)" ErrorText="@_durationError" />
-            <StatePanel State="_membersPanel" ErrorText="@_membersError" OnRetry="LoadMembersAsync" EmptyText="عضو فعالی برای انتخاب ارائه‌دهنده وجود ندارد.">
-                <MudSelect T="Guid?" @bind-Value="_presenter" Label="ارائه‌دهنده" Clearable="true" Disabled="_saving">
-                    @foreach (var member in _members)
-                    {
-                        <MudSelectItem T="Guid?" Value="@((Guid?)member.UserId)">@(string.IsNullOrWhiteSpace(member.DisplayName) ? member.Email : member.DisplayName)</MudSelectItem>
-                    }
-                </MudSelect>
-            </StatePanel>
+            <div>
+                <StatePanel State="_membersPanel" ErrorText="@_membersError" OnRetry="LoadMembersAsync" EmptyText="عضو فعالی برای انتخاب ارائه‌دهنده وجود ندارد.">
+                    <MudSelect T="Guid?" @bind-Value="_presenter" Label="ارائه‌دهنده" Clearable="true" Disabled="_saving">
+                        @foreach (var member in _members)
+                        {
+                            <MudSelectItem T="Guid?" Value="@((Guid?)member.UserId)">@(string.IsNullOrWhiteSpace(member.DisplayName) ? member.Email : member.DisplayName)</MudSelectItem>
+                        }
+                    </MudSelect>
+                </StatePanel>
+            </div>
             @if (_serverError is not null)
             {
-                <MudAlert Severity="Severity.Error" Variant="Variant.Outlined" role="alert">
+                <MudAlert Class="ksc-form-span-2" Severity="Severity.Error" Variant="Variant.Outlined" role="alert">
                     @_serverError
                     @if (_conflict)
                     {
@@ -34,7 +38,7 @@
                     }
                 </MudAlert>
             }
-        </MudStack>
+        </div>
     </DialogContent>
     <DialogActions>
         <MudButton OnClick="Cancel" Disabled="_saving">انصراف</MudButton>
@@ -122,7 +126,7 @@
         _titleError = string.IsNullOrWhiteSpace(_title) ? "موضوع را وارد کنید." : _title.Trim().Length > AgendaItem.MaxTitleLength ? "موضوع بیش از حد طولانی است." : null;
         _durationError = _duration is < 1 or > AgendaItem.MaxDurationMinutes ? "مدت باید بین ۱ تا ۶۰۰ دقیقه باشد." : null;
         if (_titleError is not null || _durationError is not null) return;
-        if (_description?.Length > AgendaItem.MaxDescriptionLength)
+        if (_description is not null && RichTextContent.ToPlainText(_description).Length > AgendaItem.MaxDescriptionLength)
         {
             _serverError = "توضیحات بیش از حد طولانی است.";
             return;

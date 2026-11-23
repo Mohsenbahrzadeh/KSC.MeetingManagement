@@ -8,17 +8,17 @@
 @inject SessionState Session
 
 <PageTitle>جست‌وجوی محتوا | مدیریت جلسات</PageTitle>
-<MudText Typo="Typo.h4" Class="ksc-page-title mb-3" tabindex="-1">جست‌وجوی محتوا</MudText>
+<div class="ksc-page-heading"><div><span class="ksc-section-eyebrow">پیدا کردن اطلاعات</span><MudText Typo="Typo.h4" Class="ksc-page-title" tabindex="-1">جست‌وجوی محتوا</MudText><p class="ksc-page-sub">در عنوان جلسه‌ها، صورت‌جلسه‌های مصوب و پیوست‌ها بگردید.</p></div></div>
 @if (!CanSearch)
 {
     <MudAlert Severity="Severity.Warning" role="alert">شما دسترسی مشاهدهٔ جلسات را ندارید.</MudAlert>
 }
 else
 {
-    <MudPaper Class="pa-3 mb-3" Outlined="true" Elevation="0">
+    <MudPaper Class="ksc-search-box pa-3 mb-3" Outlined="true" Elevation="0">
         <MudStack Row="true" AlignItems="AlignItems.Center" Wrap="Wrap.Wrap">
-            <MudTextField @bind-Value="_text" Label="عبارت جست‌وجو" Placeholder="متن صورت‌جلسهٔ مصوب یا نام و نوع پیوست" Immediate="true" MaxLength="MeetingSearchService.MaxQueryLength" OnKeyDown="OnKeyDownAsync" Class="flex-grow-1" />
-            <MudButton Variant="Variant.Filled" Color="Color.Primary" Disabled="_loading" OnClick="SearchAsync">جست‌وجو</MudButton>
+            <MudTextField @bind-Value="_text" Label="عبارت جست‌وجو" Placeholder="مثلاً: عنوان جلسه یا بخشی از متن" Immediate="true" MaxLength="MeetingSearchService.MaxQueryLength" OnKeyDown="OnKeyDownAsync" Class="flex-grow-1" Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Search" />
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Search" Disabled="_loading" OnClick="SearchAsync">جست‌وجو</MudButton>
         </MudStack>
         @if (_validation is not null) { <MudText Color="Color.Error" role="alert">@_validation</MudText> }
     </MudPaper>

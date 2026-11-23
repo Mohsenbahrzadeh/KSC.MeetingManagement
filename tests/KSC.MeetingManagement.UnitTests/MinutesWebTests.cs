@@ -3,6 +3,7 @@ using System.Text;
 using System.Text.Json;
 using Bunit;
 using KSC.MeetingManagement.Web.Components.Pages;
+using KSC.MeetingManagement.Web.Components.Common;
 using KSC.MeetingManagement.Web.Services;
 using Microsoft.Extensions.DependencyInjection;
 using MudBlazor;
@@ -106,14 +107,14 @@ public sealed class MinutesWebTests : BunitContext, IAsyncLifetime
         Assert.DoesNotContain("بازگشایی", page.Markup);
         Assert.DoesNotContain("تأیید</button>", page.Markup);
         await page.InvokeAsync(() => page.FindAll("button").Single(b => b.TextContent.Trim() == "ویرایش متن").Click());
-        page.Find("textarea").Change("متن جدید");
+        await page.InvokeAsync(() => page.FindComponent<KscRichTextEditor>().Instance.ContentChanged("<p>متن جدید</p>", 5));
         await page.InvokeAsync(() => page.FindAll("button").Single(b => b.TextContent.Trim() == "ذخیرهٔ نسخه").Click());
         page.WaitForAssertion(() => Assert.Contains(_requests, r => r.Method == HttpMethod.Put));
         var save = _requests.Single(r => r.Method == HttpMethod.Put);
         Assert.Equal($"/api/v1/meetings/{MeetingId}/minutes", save.Path);
         using var body = JsonDocument.Parse(save.Body);
         Assert.Equal(1, body.RootElement.GetProperty("expectedVersionNumber").GetInt32());
-        Assert.Equal("متن جدید", body.RootElement.GetProperty("content").GetString());
+        Assert.Contains("متن جدید", body.RootElement.GetProperty("content").GetString(), StringComparison.Ordinal);
     }
 
     [Fact]
@@ -131,11 +132,11 @@ public sealed class MinutesWebTests : BunitContext, IAsyncLifetime
         await page.InvokeAsync(() => page.FindAll("button").Single(b => b.TextContent.Trim() == "ثبت").Click());
         page.WaitForAssertion(() => Assert.Contains("دلیل را وارد کنید.", page.Markup));
         Assert.DoesNotContain(_requests, r => r.Path.EndsWith("/reject", StringComparison.Ordinal));
-        page.Find("textarea").Change("نیاز به اصلاح");
+        await page.InvokeAsync(() => page.FindComponent<KscRichTextEditor>().Instance.ContentChanged("<p>نیاز به اصلاح</p>", 11));
         await page.InvokeAsync(() => page.FindAll("button").Single(b => b.TextContent.Trim() == "ثبت").Click());
         page.WaitForAssertion(() => Assert.Contains(_requests, r => r.Path.EndsWith("/reject", StringComparison.Ordinal)));
         using var body = JsonDocument.Parse(_requests.Single(r => r.Path.EndsWith("/reject", StringComparison.Ordinal)).Body);
-        Assert.Equal("نیاز به اصلاح", body.RootElement.GetProperty("comment").GetString());
+        Assert.Contains("نیاز به اصلاح", body.RootElement.GetProperty("comment").GetString(), StringComparison.Ordinal);
     }
 
     [Fact]
@@ -161,10 +162,10 @@ public sealed class MinutesWebTests : BunitContext, IAsyncLifetime
         var page = await RenderPageAsync();
         page.WaitForAssertion(() => Assert.Contains("ویرایش متن", page.Markup));
         await page.InvokeAsync(() => page.FindAll("button").Single(b => b.TextContent.Trim() == "ویرایش متن").Click());
-        page.Find("textarea").Change("متن ذخیره‌نشده");
+        await page.InvokeAsync(() => page.FindComponent<KscRichTextEditor>().Instance.ContentChanged("<p>متن ذخیره‌نشده</p>", 14));
         await page.InvokeAsync(() => page.FindAll("button").Single(b => b.TextContent.Trim() == "ذخیرهٔ نسخه").Click());
         page.WaitForAssertion(() => Assert.Contains("توسط کاربر دیگری", page.Markup));
-        Assert.Contains("متن ذخیره‌نشده", page.Find("textarea").TextContent);
+        Assert.Contains("متن ذخیره‌نشده", page.FindComponent<KscRichTextEditor>().Instance.Value, StringComparison.Ordinal);
         Assert.Single(_requests, r => r.Method == HttpMethod.Put);
     }
 }
