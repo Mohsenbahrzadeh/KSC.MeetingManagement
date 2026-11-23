@@ -77,17 +77,20 @@ public sealed class AgendaApiTests : IClassFixture<WebApplicationFactory<Program
     }
 
     private async Task<AgendaDto> Read(Guid meetingId, Tenant? tenant = null, Guid? user = null) =>
-        (await (await Send(HttpMethod.Get, $"/api/v1/meetings/{meetingId}/agenda", tenant ?? _tenantA, user ?? _participant)).Content.ReadFromJsonAsync<AgendaDto>(Json))!;
+        (await (await Send(HttpMethod.Get, $"/api/v1/meetings/{meetingId}/agenda", tenant ?? _tenantA, user ?? _organizer)).Content.ReadFromJsonAsync<AgendaDto>(Json))!;
 
     [Fact]
     public async Task Items_are_appended_in_order_and_everyone_can_read_them()
     {
         var id = await CreateMeeting();
+        var invited = await Send(HttpMethod.Post, $"/api/v1/meetings/{id}/participants/internal", _tenantA, _organizer,
+            new { userId = _participant });
+        Assert.Equal(HttpStatusCode.Created, invited.StatusCode);
         var a1 = await Add(id, 0, "اول");
         var a2 = await Add(id, a1.Revision, "دوم");
         await Add(id, a2.Revision, "سوم");
 
-        var agenda = await Read(id);
+        var agenda = await Read(id, user: _participant);
 
         Assert.Equal(["اول", "دوم", "سوم"], agenda.Items.Select(i => i.Title));
         Assert.Equal([1, 2, 3], agenda.Items.Select(i => i.Order));

@@ -117,6 +117,8 @@ public class MediaTokenTests
         {
             var sources = Payload(Service().Issue(Request(role)).Token).GetProperty("video").GetProperty("canPublishSources");
             Assert.DoesNotContain(sources.EnumerateArray(), e => e.GetString() == "screen_share");
+            Assert.Contains(sources.EnumerateArray(), e => e.GetString() == "camera");
+            Assert.DoesNotContain(sources.EnumerateArray(), e => e.GetString() == "microphone");
         }
 
         var observer = Payload(Service().Issue(Request(MediaRole.Observer)).Token).GetProperty("video");

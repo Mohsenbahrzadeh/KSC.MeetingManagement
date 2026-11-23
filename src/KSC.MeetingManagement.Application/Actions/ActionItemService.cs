@@ -1,7 +1,9 @@
 using KSC.MeetingManagement.Application.Identity;
+using KSC.MeetingManagement.Application.Committees;
 using KSC.MeetingManagement.Application.Meetings;
 using KSC.MeetingManagement.Application.Resolutions;
 using KSC.MeetingManagement.Application.Tenants;
+using KSC.MeetingManagement.Domain.Identity;
 using KSC.MeetingManagement.Domain.Meetings;
 
 namespace KSC.MeetingManagement.Application.Actions;
@@ -52,9 +54,11 @@ public sealed class ActionItemService(
     IMeetingRepository meetings,
     IResolutionRepository resolutions,
     IMembershipStore memberships,
+    ICommitteeRepository committees,
     Notifications.NotificationService notifications,
     ITenantContext tenant,
     ICurrentUser user,
+    MeetingService meetingAccess,
     TimeProvider clock)
 {
     public const int MaxPageSize = 200;
@@ -62,7 +66,7 @@ public sealed class ActionItemService(
     /// <summary>Today in the organisation's time zone; due days are calendar days of that zone.</summary>
     public DateOnly Today() => TenantClock.Today(tenant.Tenant?.TimeZoneId, clock);
 
-    public async Task<IReadOnlyList<ActionItemDto>?> ListForMeetingAsync(Guid meetingId, CancellationToken cancellationToken)
+    public async Task<IReadOnlyList<ActionItemDto>?> ListForMeetingAsync(Guid meetingId, bool includeAll, CancellationToken cancellationToken)
     {
         if (await meetings.GetAsync(meetingId, cancellationToken) is null)
         {
@@ -70,7 +74,37 @@ public sealed class ActionItemService(
         }
 
         var today = Today();
-        return (await actions.ListForMeetingAsync(meetingId, cancellationToken)).Select(a => ActionItemDto.From(a, today)).ToList();
+        var items = await actions.ListForMeetingAsync(meetingId, cancellationToken);
+        var meeting = await meetings.GetAsync(meetingId, cancellationToken);
+        var canManage = includeAll && meeting is not null && await CanManageMeetingAsync(meeting, cancellationToken);
+        if (includeAll && !canManage) return null;
+        if (!canManage && !await meetingAccess.CanViewAsync(meetingId, cancellationToken)
+            && !items.Any(item => item.OwnerUserId == user.RequiredUserId)) return null;
+        return items.Where(item => canManage || item.OwnerUserId == user.RequiredUserId)
+            .Select(item => ActionItemDto.From(item, today)).ToList();
+    }
+
+    public async Task<bool> CanManageAsync(Guid meetingId, CancellationToken cancellationToken) =>
+        await meetings.GetAsync(meetingId, cancellationToken) is { } meeting
+            && await CanManageMeetingAsync(meeting, cancellationToken);
+
+    public async Task<bool> MeetingExistsAsync(Guid meetingId, CancellationToken cancellationToken) =>
+        await meetings.GetAsync(meetingId, cancellationToken) is not null;
+
+    public async Task<bool> CanReadMeetingActionsAsync(Guid meetingId, CancellationToken cancellationToken)
+    {
+        if (await meetings.GetAsync(meetingId, cancellationToken) is not { } meeting) return false;
+        if (await CanManageMeetingAsync(meeting, cancellationToken)) return true;
+        return (await actions.ListForMeetingAsync(meetingId, cancellationToken))
+            .Any(item => item.OwnerUserId == user.RequiredUserId);
+    }
+
+    public async Task<ActionItemDto?> GetForCallerAsync(Guid meetingId, Guid actionId, CancellationToken cancellationToken)
+    {
+        if (await actions.GetAsync(meetingId, actionId, cancellationToken) is not { } item) return null;
+        var canManage = await CanManageAsync(meetingId, cancellationToken);
+        if (!canManage && item.OwnerUserId != user.RequiredUserId) return null;
+        return ActionItemDto.From(item, Today());
     }
 
     /// <summary>Actions across the tenant. With ActiveOnly and DueBefore this is the overdue report.</summary>
@@ -82,6 +116,9 @@ public sealed class ActionItemService(
         var today = Today();
         return (await actions.QueryAsync(bounded, cancellationToken)).Select(a => ActionItemDto.From(a, today)).ToList();
     }
+
+    public Task<IReadOnlyList<ActionItemDto>> MineAsync(bool activeOnly, int skip, int take, CancellationToken cancellationToken) =>
+        QueryAsync(new ActionItemQuery(user.RequiredUserId, null, null, activeOnly, skip, take), cancellationToken);
 
     /// <summary>Every active action whose due day is before today, oldest first.</summary>
     public Task<IReadOnlyList<ActionItemDto>> OverdueAsync(Guid? ownerUserId, int skip, int take, CancellationToken cancellationToken) =>
@@ -95,6 +132,8 @@ public sealed class ActionItemService(
         {
             return null;
         }
+
+        if (!await CanManageMeetingAsync(meeting, cancellationToken)) return null;
 
         if (meeting.Status == MeetingStatus.Cancelled)
         {
@@ -169,6 +208,8 @@ public sealed class ActionItemService(
             return null;
         }
 
+        if (canManage && !await CanManageAsync(meetingId, cancellationToken)) return null;
+
         // Someone who is neither the owner nor a manager must not learn the action exists.
         if (requireOwnerOrManager && !canManage && item.OwnerUserId != user.RequiredUserId)
         {
@@ -191,6 +232,24 @@ public sealed class ActionItemService(
         {
             throw new MeetingDomainException("The owner must be an active member of this organisation.");
         }
+    }
+
+    private async Task<bool> CanManageMeetingAsync(Meeting meeting, CancellationToken cancellationToken)
+    {
+        if (await memberships.FindAsync(tenant.RequiredTenantId, user.RequiredUserId, cancellationToken) is not { IsActive: true } membership)
+            return false;
+        if (membership.HasRole(Roles.TenantOwner) || membership.HasRole(Roles.TenantAdministrator)) return true;
+
+        if (meeting.CommitteeId is { } committeeId)
+        {
+            // Action managers on committee meetings must hold a committee management role.
+            var committee = await committees.GetAsync(committeeId, cancellationToken);
+            return committee is { IsActive: true } && committee.Members.Any(member =>
+                member.UserId == user.RequiredUserId && member.Role is CommitteeRole.Chair or CommitteeRole.Secretary);
+        }
+
+        return meeting.OrganizerId == user.RequiredUserId && membership.HasRole(Roles.MeetingOrganizer)
+            || meeting.CommitteeId is null && membership.HasRole(Roles.Secretary);
     }
 
     private async Task EnsureResolutionAsync(Guid meetingId, Guid? resolutionId, CancellationToken cancellationToken)

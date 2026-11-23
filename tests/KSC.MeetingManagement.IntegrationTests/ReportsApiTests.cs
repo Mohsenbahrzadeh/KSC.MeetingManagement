@@ -41,6 +41,7 @@ public sealed class ReportsApiTests : IClassFixture<WebApplicationFactory<Progra
     private readonly Guid _participant = Guid.NewGuid();
     private readonly Guid _auditorB = Guid.NewGuid();
     private readonly HttpClient _client;
+    private readonly HashSet<(Guid CommitteeId, Guid UserId)> _committeeOfficerAssignments = [];
 
     public ReportsApiTests(WebApplicationFactory<Program> factory)
     {
@@ -100,6 +101,12 @@ public sealed class ReportsApiTests : IClassFixture<WebApplicationFactory<Progra
 
     private async Task<MeetingDto> Meeting(Guid organizer, DateTimeOffset start, string title, Guid? committee = null)
     {
+        if (committee is { } committeeId && _committeeOfficerAssignments.Add((committeeId, organizer)))
+        {
+            var member = await Send(HttpMethod.Post, $"/api/v1/committees/{committeeId}/members", _tenantA, _admin,
+                new { userId = organizer, role = "Secretary" });
+            Assert.Equal(HttpStatusCode.OK, member.StatusCode);
+        }
         var response = await Send(HttpMethod.Post, "/api/v1/meetings", _tenantA, organizer,
             new { title, mode = "Online", start, end = start.AddHours(1), allowConflicts = true, committeeId = committee });
         Assert.Equal(HttpStatusCode.Created, response.StatusCode);
@@ -307,6 +314,11 @@ public sealed class ReportsApiTests : IClassFixture<WebApplicationFactory<Progra
     {
         var active = await Committee("فعال");
         var inactive = await Committee("غیرفعال", active: false);
+        foreach (var committeeId in new[] { active.Id, inactive.Id })
+        {
+            await Send(HttpMethod.Post, $"/api/v1/committees/{committeeId}/members", _tenantA, _admin,
+                new { userId = _org1, role = "Secretary" });
+        }
         var body = new { title = "x", mode = "Online", start = May1, end = May1.AddHours(1), allowConflicts = true };
 
         var ok = await Send(HttpMethod.Post, "/api/v1/meetings", _tenantA, _org1, new { body.title, body.mode, body.start, body.end, body.allowConflicts, committeeId = active.Id });

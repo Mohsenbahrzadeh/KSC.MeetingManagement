@@ -31,7 +31,10 @@
 
         <div class="ksc-login-form-panel">
             <div class="ksc-login-form-inner">
-                <div class="ksc-login-mobile-mark" aria-hidden="true"><MudIcon Icon="@Icons.Material.Filled.Groups" /></div>
+                <div class="ksc-login-mobile-brand">
+                    <span class="ksc-login-mobile-mark" aria-hidden="true"><MudIcon Icon="@Icons.Material.Filled.Groups" /></span>
+                    <span>مدیریت جلسات</span>
+                </div>
                 <span class="ksc-login-welcome">حساب سازمانی</span>
                 <h1 tabindex="-1">ورود به حساب کاربری</h1>
                 <p class="ksc-login-intro">برای دسترسی به جلسه‌ها و ابزارهای کاری، وارد حساب خود شوید.</p>
@@ -43,12 +46,14 @@
 
                 <EditForm Model="_model" OnValidSubmit="SignInAsync" FormName="login" class="ksc-login-form">
                     <DataAnnotationsValidator />
-                    <MudTextField @bind-Value="_model.Email" Label="نشانی ایمیل" InputType="InputType.Email" Placeholder="you@example.com" Variant="Variant.Outlined"
+                    <label class="ksc-login-label" for="login-email">نشانی ایمیل</label>
+                    <MudTextField @bind-Value="_model.Email" Label="" InputId="login-email" InputType="InputType.Email" Placeholder="you@example.com" Variant="Variant.Outlined"
                                   Immediate="true" AutoFocus="true" Class="ksc-login-field" Margin="Margin.Dense"
-                                  For="() => _model.Email" Disabled="_busy" Adornment="Adornment.End" AdornmentIcon="@Icons.Material.Filled.Email"
+                                  Disabled="_busy" Adornment="Adornment.End" AdornmentIcon="@Icons.Material.Filled.Email"
                                   autocomplete="username" />
-                    <MudTextField @bind-Value="_model.Password" Label="گذرواژه" InputType="InputType.Password" Placeholder="گذرواژهٔ حساب خود را وارد کنید" Variant="Variant.Outlined"
-                                  Class="ksc-login-field" Margin="Margin.Dense" For="() => _model.Password" Disabled="_busy"
+                    <label class="ksc-login-label" for="login-password">گذرواژه</label>
+                    <MudTextField @bind-Value="_model.Password" Label="" InputId="login-password" InputType="InputType.Password" Placeholder="گذرواژهٔ حساب خود را وارد کنید" Variant="Variant.Outlined"
+                                  Class="ksc-login-field" Margin="Margin.Dense" Disabled="_busy"
                                   Adornment="Adornment.End" AdornmentIcon="@Icons.Material.Filled.Lock" autocomplete="current-password" />
                     <MudButton ButtonType="ButtonType.Submit" Variant="Variant.Filled" Color="Color.Primary" Size="Size.Large"
                                FullWidth="true" Disabled="_busy" Class="ksc-login-submit">

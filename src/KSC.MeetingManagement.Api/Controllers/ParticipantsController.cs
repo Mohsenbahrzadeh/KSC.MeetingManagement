@@ -24,7 +24,7 @@ public sealed record RedeemInvitationRequest(string Token);
 [ApiController]
 [Route("api/v1/meetings/{meetingId:guid}/participants")]
 [RequiresTenant]
-public sealed class ParticipantsController(ParticipantService participants, ICurrentUser user) : ControllerBase
+public sealed class ParticipantsController(ParticipantService participants, ICurrentUser user, MeetingService meetings) : ControllerBase
 {
     [HttpGet]
     [HasPermission(Permissions.MeetingsView)]
@@ -34,10 +34,12 @@ public sealed class ParticipantsController(ParticipantService participants, ICur
     [Audited("participant.add-internal", "participant", "meetingId")]
     [HttpPost("internal")]
     [HasPermission(Permissions.MeetingsEdit)]
-    public Task<IActionResult> AddInternal(Guid meetingId, AddInternalParticipantRequest request, CancellationToken cancellationToken)
+    public async Task<IActionResult> AddInternal(Guid meetingId, AddInternalParticipantRequest request, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(request);
-        return Run(async () => await participants.AddInternalAsync(meetingId, request.UserId, request.AllowConflicts, cancellationToken) is { } dto
+        if (!await meetings.ExistsAsync(meetingId, cancellationToken)) return NotFound();
+        if (!await meetings.CanManageAsync(meetingId, cancellationToken)) return Forbid();
+        return await Run(async () => await participants.AddInternalAsync(meetingId, request.UserId, request.AllowConflicts, cancellationToken) is { } dto
             ? StatusCode(StatusCodes.Status201Created, dto)
             : NotFound());
     }
@@ -46,10 +48,12 @@ public sealed class ParticipantsController(ParticipantService participants, ICur
     [Audited("participant.invite-guest", "participant", "meetingId")]
     [HttpPost("guests")]
     [HasPermission(Permissions.MeetingsEdit)]
-    public Task<IActionResult> InviteGuest(Guid meetingId, InviteGuestRequest request, CancellationToken cancellationToken)
+    public async Task<IActionResult> InviteGuest(Guid meetingId, InviteGuestRequest request, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(request);
-        return Run(async () => await participants.InviteGuestAsync(meetingId, request.Name, request.Email, request.ExpiresUtc, cancellationToken) is { } dto
+        if (!await meetings.ExistsAsync(meetingId, cancellationToken)) return NotFound();
+        if (!await meetings.CanManageAsync(meetingId, cancellationToken)) return Forbid();
+        return await Run(async () => await participants.InviteGuestAsync(meetingId, request.Name, request.Email, request.ExpiresUtc, cancellationToken) is { } dto
             ? StatusCode(StatusCodes.Status201Created, dto)
             : NotFound());
     }
@@ -57,8 +61,12 @@ public sealed class ParticipantsController(ParticipantService participants, ICur
     [Audited("participant.revoke", "participant", "meetingId")]
     [HttpPost("{participantId:guid}/revoke")]
     [HasPermission(Permissions.MeetingsEdit)]
-    public async Task<IActionResult> Revoke(Guid meetingId, Guid participantId, CancellationToken cancellationToken) =>
-        await participants.RevokeAsync(meetingId, participantId, cancellationToken) is { } dto ? Ok(dto) : NotFound();
+    public async Task<IActionResult> Revoke(Guid meetingId, Guid participantId, CancellationToken cancellationToken)
+    {
+        if (!await meetings.ExistsAsync(meetingId, cancellationToken)) return NotFound();
+        if (!await meetings.CanManageAsync(meetingId, cancellationToken)) return Forbid();
+        return await participants.RevokeAsync(meetingId, participantId, cancellationToken) is { } dto ? Ok(dto) : NotFound();
+    }
 
     [Audited("participant.respond", "participant", "meetingId")]
     [HttpPost("{participantId:guid}/respond")]

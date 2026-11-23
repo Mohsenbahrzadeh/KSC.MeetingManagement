@@ -18,7 +18,13 @@ public sealed class EfMeetingSearchRepository(KscDbContext db, ITenantContext te
                 .Where(participant => participant.UserId == userId
                     && (participant.Status == Domain.Meetings.InvitationStatus.Invited || participant.Status == Domain.Meetings.InvitationStatus.Accepted))
                 .Select(participant => participant.MeetingId);
-            meetings = meetings.Where(meeting => meeting.OrganizerId == userId || participantMeetingIds.Contains(meeting.Id));
+            var memberCommitteeIds = from member in db.Set<CommitteeMember>().AsNoTracking()
+                                     join committee in db.Committees.AsNoTracking() on member.CommitteeId equals committee.Id
+                                     where member.UserId == userId && committee.IsActive
+                                     select member.CommitteeId;
+            meetings = meetings.Where(meeting => meeting.OrganizerId == userId
+                || participantMeetingIds.Contains(meeting.Id)
+                || (meeting.CommitteeId != null && memberCommitteeIds.Contains(meeting.CommitteeId.Value)));
         }
 
         return (await meetings.Select(meeting => meeting.Id).ToListAsync(cancellationToken)).ToHashSet();

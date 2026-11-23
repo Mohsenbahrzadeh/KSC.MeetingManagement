@@ -28,7 +28,7 @@ public sealed class LiveKitTokenService(MediaOptions options, TimeProvider clock
 {
     private const int MaxNameLength = 100;
     private static readonly string[] HostSources = ["camera", "microphone", "screen_share", "screen_share_audio"];
-    private static readonly string[] ParticipantSources = ["camera", "microphone"];
+    private static readonly string[] ParticipantSources = ["camera"];
 
     public bool IsConfigured => options.IsComplete;
 

@@ -89,6 +89,9 @@ public sealed class AttachmentsApiTests : IClassFixture<WebApplicationFactory<Pr
     public async Task Organizer_uploads_and_members_download_same_bytes()
     {
         var meetingId = await CreateMeeting();
+        var invite = Request(HttpMethod.Post, $"/api/v1/meetings/{meetingId}/participants/internal", _tenantA, _organizerA);
+        invite.Content = JsonContent.Create(new { userId = _participantA });
+        Assert.Equal(HttpStatusCode.Created, (await _client.SendAsync(invite)).StatusCode);
 
         var upload = await Upload(meetingId, "agenda.pdf", Pdf, _tenantA, _organizerA);
         var dto = await upload.Content.ReadFromJsonAsync<AttachmentDto>(Json);

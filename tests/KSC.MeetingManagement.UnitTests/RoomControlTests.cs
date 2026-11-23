@@ -175,7 +175,25 @@ public class LiveKitRoomControlTests
         Assert.Equal("u-member", json.RootElement.GetProperty("identity").GetString());
         var sources = json.RootElement.GetProperty("permission").GetProperty("canPublishSources");
         Assert.Contains(sources.EnumerateArray(), source => source.GetString() == "SCREEN_SHARE");
+        Assert.DoesNotContain(sources.EnumerateArray(), source => source.GetString() == "MICROPHONE");
         Assert.DoesNotContain(sources.EnumerateArray(), source => source.GetString() == "SCREEN_SHARE_AUDIO");
+    }
+
+    [Fact]
+    public async Task Microphone_permission_preserves_other_livekit_publish_sources()
+    {
+        var stub = new Stub(HttpStatusCode.OK);
+        stub.ResponseBodies.Enqueue("{\"participants\":[{\"identity\":\"u-member\",\"permission\":{\"canPublishSources\":[\"CAMERA\",\"SCREEN_SHARE\"]}}]}");
+        stub.ResponseBodies.Enqueue("{}");
+        var control = new LiveKitRoomControl(new HttpClient(stub), Options(), new Clock());
+
+        await control.SetParticipantPublishSourcePermissionAsync("ksc-room-1", "u-member", "MICROPHONE", true, CancellationToken.None);
+
+        using var json = JsonDocument.Parse(stub.Calls[1].Body);
+        var sources = json.RootElement.GetProperty("permission").GetProperty("canPublishSources");
+        Assert.Contains(sources.EnumerateArray(), source => source.GetString() == "CAMERA");
+        Assert.Contains(sources.EnumerateArray(), source => source.GetString() == "MICROPHONE");
+        Assert.Contains(sources.EnumerateArray(), source => source.GetString() == "SCREEN_SHARE");
     }
 
     [Fact]
@@ -239,6 +257,17 @@ public class LiveKitRoomControlTests
         await control.CloseRoomAsync("r", CancellationToken.None);
 
         Assert.Empty(stub.Calls);
+    }
+
+    [Fact]
+    public async Task Recording_without_a_configured_path_fails_with_an_explicit_configuration_error()
+    {
+        var control = new LiveKitRoomControl(new HttpClient(new Stub(HttpStatusCode.OK)), Options(), new Clock());
+
+        var error = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            control.SetRecordingAsync("r", true, null, CancellationToken.None));
+
+        Assert.Contains("recording path", error.Message, StringComparison.OrdinalIgnoreCase);
     }
 
     [Theory]

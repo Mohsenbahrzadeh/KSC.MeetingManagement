@@ -6,6 +6,7 @@ let previewStream = null;
 let room = null;
 let dotnet = null;
 let tiles = null;
+let expandedTile = null;
 let whiteboardCanvas = null;
 let presenterIdentity = "";
 let localIsPresenter = false;
@@ -13,7 +14,11 @@ let whiteboardState = [];
 let whiteboardActive = false;
 let whiteboardTool = "pen";
 let whiteboardDraft = null;
+let whiteboardDrag = null;
 let recordingActive = false;
+let localRecorder = null;
+let muteAllAnnounced = false;
+let whiteboardEditors = new Set();
 const whiteboardTopic = "ksc-whiteboard-v1";
 const screenShareTopic = "ksc-screen-share-v1";
 
@@ -53,7 +58,11 @@ export async function connect(serverUrl, token, iceServers, container, boardCanv
     await stopPreview();
     dotnet = reference;
     tiles = container;
-    whiteboardCanvas = boardCanvas;
+    whiteboardCanvas = typeof boardCanvas === "string"
+        ? document.getElementById(boardCanvas)
+        : boardCanvas instanceof HTMLCanvasElement
+            ? boardCanvas
+            : null;
     presenterIdentity = organizerIdentity || "";
     localIsPresenter = !!isOrganizer;
     room = new Room({
@@ -87,6 +96,7 @@ export async function connect(serverUrl, token, iceServers, container, boardCanv
         if (isPresenter() && participant.identity !== room.localParticipant.identity) {
             void sendWhiteboardSnapshot(participant.identity);
             if (recordingActive) void publishRecordingStatus(true, [participant.identity]);
+            if (muteAllAnnounced) void publishRoomControl({ type: "mute-all-notice" }, [participant.identity]);
         }
     });
     room.on(RoomEvent.ParticipantDisconnected, reportParticipantMicrophones);
@@ -107,6 +117,7 @@ export async function connect(serverUrl, token, iceServers, container, boardCanv
     try {
         await room.connect(serverUrl, token, configuration);
     } catch (e) {
+        console.error("LiveKit room connection failed", { serverUrl, error: e });
         room = null;
         return e && e.message ? e.message : "connect-failed";
     }
@@ -133,14 +144,22 @@ export async function connect(serverUrl, token, iceServers, container, boardCanv
 
 export async function setMic(on) {
     if (!room) return false;
-    await room.localParticipant.setMicrophoneEnabled(on);
-    return on;
+    try {
+        await room.localParticipant.setMicrophoneEnabled(on);
+        return on;
+    } catch {
+        return !on;
+    }
 }
 
 export async function setCamera(on) {
     if (!room) return false;
-    await room.localParticipant.setCameraEnabled(on);
-    return on;
+    try {
+        await room.localParticipant.setCameraEnabled(on);
+        return on;
+    } catch {
+        return !on;
+    }
 }
 
 /** Starts or stops screen sharing. Returns whether sharing is on afterwards (the user can cancel the browser picker). */
@@ -163,25 +182,36 @@ export async function setScreenShare(on) {
 let screenShareApproved = false;
 
 export async function requestScreenShare() {
-    if (!room || isPresenter()) return false;
-    try {
-        const bytes = new TextEncoder().encode(JSON.stringify({ type: "request", name: room.localParticipant.name || room.localParticipant.identity }));
-        await room.localParticipant.publishData(bytes, { reliable: true, topic: screenShareTopic, destinationIdentities: [presenterIdentity] });
-        return true;
-    } catch {
-        return false;
-    }
+    return requestPermission("screen-share");
 }
 
-export async function decideScreenShare(identity, allowed) {
-    if (!room || !isPresenter()) return false;
-    try {
-        const bytes = new TextEncoder().encode(JSON.stringify({ type: "decision", allowed: !!allowed }));
-        await room.localParticipant.publishData(bytes, { reliable: true, topic: screenShareTopic, destinationIdentities: [identity] });
-        return true;
-    } catch {
-        return false;
+export async function requestPermission(capability) {
+    if (!room || isPresenter()) return false;
+    return publishRoomControl({
+        type: "permission-request", capability,
+        name: room.localParticipant.name || room.localParticipant.identity
+    }, [presenterIdentity]);
+}
+
+export async function decidePermission(identity, capability, allowed) {
+    if (!room || !isPresenter() || !["speak", "screen-share", "whiteboard"].includes(capability)) return false;
+    if (capability === "screen-share") {
+        return publishRoomControl({ type: "permission-decision", capability, allowed: !!allowed }, [identity]);
     }
+    if (capability === "whiteboard") {
+        if (allowed) whiteboardEditors.add(identity);
+        else whiteboardEditors.delete(identity);
+        setupWhiteboard();
+        return publishRoomControl({ type: "permission-decision", capability, identity, allowed: !!allowed });
+    }
+    return publishRoomControl({ type: "permission-decision", capability, allowed: !!allowed }, [identity]);
+}
+
+/** Broadcasts a visible notice after the server has muted participants. */
+export async function announceMuteAll() {
+    if (!isPresenter()) return false;
+    muteAllAnnounced = true;
+    return publishRoomControl({ type: "mute-all-notice" });
 }
 
 export async function setRecordingStatus(active) {
@@ -189,6 +219,112 @@ export async function setRecordingStatus(active) {
     recordingActive = !!active;
     await publishRecordingStatus(recordingActive);
     return true;
+}
+
+/** Records the selected browser tab/screen locally; no media is sent to the server. */
+export async function startLocalRecording(meetingId) {
+    if (localRecorder) return "already-recording";
+    if (!navigator.mediaDevices?.getDisplayMedia || !window.MediaRecorder) return "unsupported";
+
+    let stream;
+    try {
+        stream = await navigator.mediaDevices.getDisplayMedia({
+            video: { frameRate: { ideal: 30, max: 30 } },
+            audio: true
+        });
+    } catch (error) {
+        if (error?.name === "NotAllowedError" || error?.name === "AbortError") return "cancelled";
+        return error?.name || "error";
+    }
+
+    const audioAvailable = stream.getAudioTracks().length > 0;
+    localRecorder = { stream, meetingId: String(meetingId).replace(/[^a-zA-Z0-9-]/g, ""), part: 1, recorder: null, timer: null, rotate: false, finishing: false };
+    stream.getVideoTracks()[0]?.addEventListener("ended", () => finishLocalRecording(), { once: true });
+    try {
+        startLocalRecordingPart(localRecorder);
+    } catch (error) {
+        stream.getTracks().forEach(track => track.stop());
+        localRecorder = null;
+        return error?.name || "recording-error";
+    }
+    return audioAvailable ? "started-audio" : "started-no-audio";
+}
+
+export async function stopLocalRecording() {
+    finishLocalRecording();
+}
+
+function startLocalRecordingPart(state) {
+    if (localRecorder !== state || state.finishing || !state.stream.active) return;
+    const mimeType = ["video/webm;codecs=vp9,opus", "video/webm;codecs=vp8,opus", "video/webm", "video/mp4"]
+        .find(type => MediaRecorder.isTypeSupported(type));
+    state.recorder = new MediaRecorder(state.stream, mimeType ? { mimeType } : undefined);
+    const recorder = state.recorder;
+    const chunks = [];
+    recorder.addEventListener("dataavailable", event => {
+        if (event.data?.size) chunks.push(event.data);
+    });
+    recorder.addEventListener("error", () => finishLocalRecording(), { once: true });
+    recorder.addEventListener("stop", () => {
+        if (chunks.length) {
+            const type = recorder.mimeType || chunks[0].type || "video/webm";
+            downloadRecordingPart(new Blob(chunks, { type }), state, type);
+            dotnet?.invokeMethodAsync("OnLocalRecordingPart", state.part);
+            state.part++;
+        }
+
+        if (localRecorder !== state) return;
+        if (state.rotate && !state.finishing && state.stream.active) {
+            state.rotate = false;
+            try {
+                startLocalRecordingPart(state);
+            } catch {
+                finishLocalRecording();
+            }
+            return;
+        }
+
+        clearTimeout(state.timer);
+        state.stream.getTracks().forEach(track => track.stop());
+        localRecorder = null;
+        dotnet?.invokeMethodAsync("OnLocalRecordingStatus", false, null);
+    }, { once: true });
+
+    recorder.start();
+    state.timer = setTimeout(() => {
+        if (localRecorder !== state || state.finishing || recorder.state !== "recording") return;
+        state.rotate = true;
+        recorder.stop();
+    }, 30 * 60 * 1000);
+}
+
+function finishLocalRecording() {
+    const state = localRecorder;
+    if (!state || state.finishing) return;
+    state.finishing = true;
+    state.rotate = false;
+    clearTimeout(state.timer);
+    if (state.recorder?.state === "recording") state.recorder.stop();
+    else {
+        state.stream.getTracks().forEach(track => track.stop());
+        localRecorder = null;
+        dotnet?.invokeMethodAsync("OnLocalRecordingStatus", false, null);
+    }
+}
+
+function downloadRecordingPart(blob, state, mimeType) {
+    const extension = mimeType.includes("mp4") ? "mp4" : "webm";
+    const part = String(state.part).padStart(3, "0");
+    const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+    const anchor = document.createElement("a");
+    const url = URL.createObjectURL(blob);
+    anchor.href = url;
+    anchor.download = `meeting-${state.meetingId}-part-${part}-${stamp}.${extension}`;
+    anchor.style.display = "none";
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 60_000);
 }
 
 async function publishRecordingStatus(active, destinationIdentities) {
@@ -202,6 +338,7 @@ async function publishRecordingStatus(active, destinationIdentities) {
 }
 
 export async function disconnect() {
+    finishLocalRecording();
     if (room) {
         const old = room;
         room = null;
@@ -210,12 +347,16 @@ export async function disconnect() {
     if (tiles) {
         tiles.replaceChildren();
     }
+    expandedTile = null;
     whiteboardActive = false;
     whiteboardState = [];
     whiteboardDraft = null;
+    whiteboardDrag = null;
     presenterIdentity = "";
     localIsPresenter = false;
     screenShareApproved = false;
+    whiteboardEditors = new Set();
+    muteAllAnnounced = false;
     whiteboardCanvas = null;
 }
 
@@ -231,8 +372,12 @@ function isPresenter() {
     return !!room && localIsPresenter;
 }
 
+function canEditWhiteboard() {
+    return isPresenter() || (!!room && whiteboardEditors.has(room.localParticipant.identity));
+}
+
 function setupWhiteboard(attempt = 0) {
-    if (!whiteboardCanvas || !room) return;
+    if (!(whiteboardCanvas instanceof HTMLCanvasElement) || !room) return;
     // The canvas is rendered conditionally when the room becomes active. Blazor can
     // finish that render just after the LiveKit connection, so don't bind handlers
     // to an ElementReference that hasn't been attached to the document yet.
@@ -242,16 +387,10 @@ function setupWhiteboard(attempt = 0) {
         return;
     }
 
-    whiteboardActive = isPresenter();
+    whiteboardActive = canEditWhiteboard();
     whiteboardCanvas.width = 1600;
     whiteboardCanvas.height = 900;
-    for (const video of tiles?.querySelectorAll('video[data-track-source="screen_share"]') ?? []) {
-        const tile = video.closest(".ksc-tile-video");
-        if (!tile) continue;
-        tile.classList.add("ksc-screen-share-on-board");
-        whiteboardCanvas.parentElement.appendChild(tile);
-        whiteboardCanvas.style.background = "transparent";
-    }
+    whiteboardCanvas.style.background = "#fff";
     drawWhiteboard();
     whiteboardCanvas.onpointerdown = whiteboardActive ? beginWhiteboardStroke : null;
     whiteboardCanvas.onpointermove = whiteboardActive ? continueWhiteboardStroke : null;
@@ -259,11 +398,11 @@ function setupWhiteboard(attempt = 0) {
     whiteboardCanvas.onpointercancel = whiteboardCanvas.onpointerup;
     whiteboardCanvas.style.touchAction = whiteboardActive ? "none" : "pan-y";
     whiteboardCanvas.style.zIndex = "3";
-    whiteboardCanvas.style.cursor = whiteboardTool === "text" ? "text" : "crosshair";
+    whiteboardCanvas.style.cursor = whiteboardTool === "text" ? "text" : whiteboardTool === "select" ? "grab" : "crosshair";
 }
 
 export function setWhiteboardText(text) {
-    if (!isPresenter() || !whiteboardCanvas || typeof text !== "string") return false;
+    if (!canEditWhiteboard() || !whiteboardCanvas || typeof text !== "string") return false;
     const value = text.trim().slice(0, 500);
     if (!value) return false;
     const item = { id: `${Date.now()}-${Math.random().toString(36).slice(2)}`, kind: "text", text: value, x: 0.05, y: 0.05, color: whiteboardCanvas.dataset.penColor || "#17324D" };
@@ -274,20 +413,20 @@ export function setWhiteboardText(text) {
 }
 
 export function setWhiteboardTool(toolOrColor) {
-    if (!isPresenter()) return false;
+    if (!canEditWhiteboard()) return false;
     if (typeof toolOrColor === "string" && /^#[0-9a-f]{6}$/i.test(toolOrColor)) {
         whiteboardCanvas?.setAttribute("data-pen-color", toolOrColor);
         return true;
     }
-    const tools = ["pen", "text", "line", "rectangle", "circle", "triangle", "arrow"];
+    const tools = ["select", "pen", "text", "line", "rectangle", "circle", "triangle", "arrow"];
     if (!tools.includes(toolOrColor)) return false;
     whiteboardTool = toolOrColor;
-    if (whiteboardCanvas) whiteboardCanvas.style.cursor = toolOrColor === "text" ? "text" : "crosshair";
+    if (whiteboardCanvas) whiteboardCanvas.style.cursor = toolOrColor === "text" ? "text" : toolOrColor === "select" ? "grab" : "crosshair";
     return true;
 }
 
 export async function clearWhiteboard() {
-    if (!isPresenter()) return false;
+    if (!canEditWhiteboard()) return false;
     whiteboardState = [];
     drawWhiteboard();
     await publishWhiteboardMessage({ type: "clear" });
@@ -295,7 +434,7 @@ export async function clearWhiteboard() {
 }
 
 export async function undoWhiteboard() {
-    if (!isPresenter() || !whiteboardState.length) return false;
+    if (!canEditWhiteboard() || !whiteboardState.length) return false;
     whiteboardState.pop();
     drawWhiteboard();
     await publishWhiteboardMessage({ type: "undo" });
@@ -319,10 +458,18 @@ function whiteboardPoint(event) {
 }
 
 function beginWhiteboardStroke(event) {
-    if (!whiteboardActive || event.button !== 0) return;
+    if (!canEditWhiteboard() || event.button !== 0) return;
     event.preventDefault();
     const point = whiteboardPoint(event);
     const color = whiteboardCanvas.dataset.penColor || "#17324D";
+    if (whiteboardTool === "select") {
+        const item = [...whiteboardState].reverse().find(candidate => hitWhiteboardItem(candidate, point));
+        if (!item) return;
+        whiteboardCanvas.setPointerCapture(event.pointerId);
+        whiteboardDrag = { item, start: point, original: structuredClone(item) };
+        whiteboardCanvas.style.cursor = "grabbing";
+        return;
+    }
     if (whiteboardTool === "text") {
         openWhiteboardTextEditor(point, color);
         return;
@@ -374,7 +521,15 @@ function openWhiteboardTextEditor(point, color) {
 }
 
 function continueWhiteboardStroke(event) {
-    if (!whiteboardActive || !whiteboardCanvas.hasPointerCapture(event.pointerId)) return;
+    if (!canEditWhiteboard() || !whiteboardCanvas.hasPointerCapture(event.pointerId)) return;
+    if (whiteboardDrag) {
+        const point = whiteboardPoint(event);
+        const dx = point.x - whiteboardDrag.start.x;
+        const dy = point.y - whiteboardDrag.start.y;
+        translateWhiteboardItem(whiteboardDrag.item, whiteboardDrag.original, dx, dy);
+        drawWhiteboard();
+        return;
+    }
     if (whiteboardDraft) {
         const point = whiteboardPoint(event);
         whiteboardDraft.w = point.x - whiteboardDraft.x;
@@ -393,8 +548,18 @@ function continueWhiteboardStroke(event) {
 }
 
 function finishWhiteboardStroke(event) {
-    if (!whiteboardActive || !whiteboardCanvas.hasPointerCapture(event.pointerId)) return;
+    if (!canEditWhiteboard() || !whiteboardCanvas.hasPointerCapture(event.pointerId)) return;
     whiteboardCanvas.releasePointerCapture(event.pointerId);
+    if (whiteboardDrag) {
+        const { item, original } = whiteboardDrag;
+        whiteboardDrag = null;
+        whiteboardCanvas.style.cursor = "grab";
+        if (JSON.stringify(item) !== JSON.stringify(original)) {
+            void publishWhiteboardMessage({ type: "item", item });
+        }
+        drawWhiteboard();
+        return;
+    }
     if (whiteboardDraft) {
         const item = whiteboardDraft;
         whiteboardDraft = null;
@@ -420,11 +585,8 @@ function drawWhiteboard() {
     const width = whiteboardCanvas.width;
     const height = whiteboardCanvas.height;
     context.clearRect(0, 0, width, height);
-    const hasScreenShare = !!whiteboardCanvas.parentElement?.querySelector(".ksc-screen-share-on-board");
-    if (!hasScreenShare) {
-        context.fillStyle = "#ffffff";
-        context.fillRect(0, 0, width, height);
-    }
+    context.fillStyle = "#ffffff";
+    context.fillRect(0, 0, width, height);
     context.lineCap = "round";
     context.lineJoin = "round";
     context.lineWidth = 5;
@@ -479,13 +641,79 @@ function drawWhiteboardItem(context, item, width, height) {
     context.stroke();
 }
 
+function hitWhiteboardItem(item, point) {
+    const margin = 0.015;
+    if (item.kind === "text") {
+        const lines = (item.text || "").split("\n");
+        const width = Math.min(.45, Math.max(.04, ...lines.map(line => line.length * .021)));
+        const height = Math.max(.04, lines.length * .05);
+        return point.x >= item.x - margin && point.x <= item.x + width + margin
+            && point.y >= item.y - margin && point.y <= item.y + height + margin;
+    }
+    if (item.kind === "shape") {
+        const left = Math.min(item.x, item.x + item.w);
+        const right = Math.max(item.x, item.x + item.w);
+        const top = Math.min(item.y, item.y + item.h);
+        const bottom = Math.max(item.y, item.y + item.h);
+        if (point.x < left - margin || point.x > right + margin || point.y < top - margin || point.y > bottom + margin) return false;
+        if (item.shape === "rectangle") return point.x <= left + margin || point.x >= right - margin || point.y <= top + margin || point.y >= bottom - margin;
+        if (item.shape === "circle") {
+            const rx = Math.max((right - left) / 2, margin);
+            const ry = Math.max((bottom - top) / 2, margin);
+            const normalized = Math.hypot((point.x - (left + right) / 2) / rx, (point.y - (top + bottom) / 2) / ry);
+            return Math.abs(normalized - 1) <= margin / Math.max(rx, ry);
+        }
+        return Math.min(
+            distanceToSegment(point, { x: (left + right) / 2, y: top }, { x: right, y: bottom }),
+            distanceToSegment(point, { x: right, y: bottom }, { x: left, y: bottom }),
+            distanceToSegment(point, { x: left, y: bottom }, { x: (left + right) / 2, y: top })
+        ) <= margin;
+    }
+    if (item.kind === "pen" && Array.isArray(item.points)) {
+        if (item.points.length === 1) return Math.hypot(item.points[0].x - point.x, item.points[0].y - point.y) <= margin * 1.5;
+        return item.points.slice(1).some((end, index) => distanceToSegment(point, item.points[index], end) <= margin * 1.5);
+    }
+    return false;
+}
+
+function distanceToSegment(point, start, end) {
+    const dx = end.x - start.x;
+    const dy = end.y - start.y;
+    const lengthSquared = dx * dx + dy * dy;
+    const t = lengthSquared ? Math.max(0, Math.min(1, ((point.x - start.x) * dx + (point.y - start.y) * dy) / lengthSquared)) : 0;
+    return Math.hypot(point.x - (start.x + t * dx), point.y - (start.y + t * dy));
+}
+
+function translateWhiteboardItem(item, original, dx, dy) {
+    const points = item.kind === "pen" ? original.points : null;
+    const minX = item.kind === "shape" ? Math.min(original.x, original.x + original.w)
+        : item.kind === "pen" ? Math.min(...points.map(point => point.x)) : original.x;
+    const maxX = item.kind === "shape" ? Math.max(original.x, original.x + original.w)
+        : item.kind === "pen" ? Math.max(...points.map(point => point.x)) : Math.min(1, original.x + Math.max(.04, (original.text || "").length * .021));
+    const minY = item.kind === "shape" ? Math.min(original.y, original.y + original.h)
+        : item.kind === "pen" ? Math.min(...points.map(point => point.y)) : original.y;
+    const maxY = item.kind === "shape" ? Math.max(original.y, original.y + original.h)
+        : item.kind === "pen" ? Math.max(...points.map(point => point.y)) : Math.min(1, original.y + .05 * (original.text || "").split("\n").length);
+    dx = Math.max(-minX, Math.min(1 - maxX, dx));
+    dy = Math.max(-minY, Math.min(1 - maxY, dy));
+    if (item.kind === "shape") {
+        item.x = original.x + dx;
+        item.y = original.y + dy;
+    } else if (item.kind === "text") {
+        item.x = original.x + dx;
+        item.y = original.y + dy;
+    } else if (item.kind === "pen") {
+        item.points = original.points.map(point => ({ x: point.x + dx, y: point.y + dy }));
+    }
+}
+
 function addWhiteboardItem(item) {
     if (whiteboardState.length >= 300) whiteboardState.shift();
     whiteboardState.push(item);
 }
 
 function receiveWhiteboardData(payload, participant, _kind, topic) {
-    if (topic !== whiteboardTopic || !participant || participant.identity !== presenterIdentity) return;
+    if (topic !== whiteboardTopic || !participant || (participant.identity !== presenterIdentity && !whiteboardEditors.has(participant.identity))) return;
     try {
         const message = JSON.parse(new TextDecoder().decode(payload));
         if (message.type === "snapshot-start") whiteboardState = [];
@@ -497,7 +725,11 @@ function receiveWhiteboardData(payload, participant, _kind, topic) {
             if (stroke) stroke.points.push(...message.points);
         }
         else if (message.type === "stroke" && message.stroke?.points?.length) addWhiteboardItem({ ...message.stroke, kind: "pen" });
-        else if (message.type === "item" && message.item) addWhiteboardItem(message.item);
+        else if (message.type === "item" && message.item) {
+            const index = whiteboardState.findIndex(item => item.id === message.item.id);
+            if (index >= 0) whiteboardState[index] = message.item;
+            else addWhiteboardItem(message.item);
+        }
         else if (message.type === "undo") whiteboardState.pop();
         else if (message.type === "clear") whiteboardState = [];
         drawWhiteboard();
@@ -510,11 +742,29 @@ function receiveScreenShareData(payload, participant, _kind, topic) {
     if (topic !== screenShareTopic || !participant) return;
     try {
         const message = JSON.parse(new TextDecoder().decode(payload));
-        if (isPresenter() && message.type === "request") {
-            dotnet?.invokeMethodAsync("OnScreenShareRequest", participant.identity, participant.name || participant.identity);
-        } else if (participant.identity === presenterIdentity && message.type === "decision") {
-            screenShareApproved = !!message.allowed;
-            dotnet?.invokeMethodAsync("OnScreenShareDecision", screenShareApproved);
+        if (isPresenter() && (message.type === "permission-request" || message.type === "request" || message.type === "speak-request")) {
+            const capability = message.capability || (message.type === "speak-request" ? "speak" : "screen-share");
+            if (["speak", "screen-share", "whiteboard"].includes(capability)) {
+                dotnet?.invokeMethodAsync("OnPermissionRequest", participant.identity, message.name || participant.name || participant.identity, capability);
+            }
+        } else if (participant.identity === presenterIdentity && message.type === "permission-decision") {
+            const identity = message.identity || room?.localParticipant.identity;
+            if (message.capability === "whiteboard" && identity) {
+                if (message.allowed) whiteboardEditors.add(identity);
+                else whiteboardEditors.delete(identity);
+                if (identity === room?.localParticipant.identity) setupWhiteboard();
+            }
+            if (identity !== room?.localParticipant.identity) return;
+            if (message.capability === "screen-share") {
+                screenShareApproved = !!message.allowed;
+                dotnet?.invokeMethodAsync("OnScreenShareDecision", screenShareApproved);
+            } else if (message.capability === "speak") {
+                dotnet?.invokeMethodAsync("OnSpeakDecision", !!message.allowed);
+            } else if (message.capability === "whiteboard") {
+                dotnet?.invokeMethodAsync("OnWhiteboardDecision", !!message.allowed);
+            }
+        } else if (participant.identity === presenterIdentity && message.type === "mute-all-notice") {
+            dotnet?.invokeMethodAsync("OnMuteAllNotice");
         } else if (participant.identity === presenterIdentity && message.type === "recording") {
             dotnet?.invokeMethodAsync("OnRecordingStatus", !!message.active);
         }
@@ -523,8 +773,19 @@ function receiveScreenShareData(payload, participant, _kind, topic) {
     }
 }
 
+async function publishRoomControl(message, destinationIdentities) {
+    if (!room) return false;
+    try {
+        const bytes = new TextEncoder().encode(JSON.stringify(message));
+        await room.localParticipant.publishData(bytes, { reliable: true, topic: screenShareTopic, destinationIdentities });
+        return true;
+    } catch {
+        return false;
+    }
+}
+
 async function publishWhiteboardMessage(message, destinationIdentities) {
-    if (!isPresenter()) return;
+    if (!room || (!isPresenter() && !canEditWhiteboard())) return;
     const bytes = new TextEncoder().encode(JSON.stringify(message));
     try {
         await room.localParticipant.publishData(bytes, { reliable: true, topic: whiteboardTopic, destinationIdentities });
@@ -535,6 +796,12 @@ async function publishWhiteboardMessage(message, destinationIdentities) {
 
 export function connectionState() {
     return room ? room.state : ConnectionState.Disconnected;
+}
+
+export function refreshWhiteboard() {
+    if (!whiteboardCanvas || !(whiteboardCanvas instanceof HTMLCanvasElement)) return false;
+    setupWhiteboard();
+    return true;
 }
 
 function state(value) {
@@ -557,7 +824,7 @@ function reportParticipantMicrophones() {
 }
 
 function addTile(track, participant, local = false) {
-    if (!tiles && !(track.source === Track.Source.ScreenShare && whiteboardCanvas?.parentElement)) return;
+    if (!tiles) return;
     if (track.kind === Track.Kind.Audio) {
         if (local) return; // never play our own microphone back
         const audio = track.attach();
@@ -585,6 +852,43 @@ function addTile(track, participant, local = false) {
     const caption = document.createElement("figcaption");
     caption.textContent = (participant && (participant.name || participant.identity)) || "";
     tile.append(video, caption);
+    const enlarge = document.createElement("button");
+    enlarge.type = "button";
+    enlarge.className = "ksc-tile-expand";
+    enlarge.textContent = "بزرگ‌نمایی";
+    enlarge.setAttribute("aria-label", `بزرگ‌نمایی تصویر ${(participant && (participant.name || participant.identity)) || "شرکت‌کننده"}`);
+    enlarge.setAttribute("aria-pressed", "false");
+    enlarge.addEventListener("click", async () => {
+        if (tiles?.classList.contains("ksc-room-grid-single")) {
+            try {
+                if (document.fullscreenElement === tile) await document.exitFullscreen();
+                else if (tile.classList.contains("ksc-tile-expanded")) tile.classList.remove("ksc-tile-expanded");
+                else await tile.requestFullscreen();
+            } catch {
+                tile.classList.toggle("ksc-tile-expanded");
+            }
+            const isExpanded = document.fullscreenElement === tile || tile.classList.contains("ksc-tile-expanded");
+            enlarge.textContent = isExpanded ? "بازگشت" : "بزرگ‌نمایی";
+            enlarge.setAttribute("aria-pressed", String(isExpanded));
+            return;
+        }
+
+        if (expandedTile && expandedTile !== tile) {
+            expandedTile.classList.remove("ksc-tile-expanded");
+            const previousButton = expandedTile.querySelector(".ksc-tile-expand");
+            if (previousButton) {
+                previousButton.textContent = "بزرگ‌نمایی";
+                previousButton.setAttribute("aria-pressed", "false");
+            }
+        }
+
+        const shouldExpand = !tile.classList.contains("ksc-tile-expanded");
+        tile.classList.toggle("ksc-tile-expanded", shouldExpand);
+        expandedTile = shouldExpand ? tile : null;
+        enlarge.textContent = shouldExpand ? "بازگشت" : "بزرگ‌نمایی";
+        enlarge.setAttribute("aria-pressed", String(shouldExpand));
+    });
+    tile.appendChild(enlarge);
     if (track.source === Track.Source.ScreenShare) {
         const expand = document.createElement("button");
         expand.type = "button";
@@ -601,31 +905,23 @@ function addTile(track, participant, local = false) {
         });
         tile.appendChild(expand);
     }
-    if (track.source === Track.Source.ScreenShare && whiteboardCanvas?.parentElement) {
-        tile.classList.add("ksc-screen-share-on-board");
-        whiteboardCanvas.parentElement.appendChild(tile);
-        whiteboardCanvas.style.background = "transparent";
-        drawWhiteboard();
-    } else {
-        tiles?.appendChild(tile);
-    }
+    tiles.appendChild(tile);
     syncMediaEmptyState();
 }
 
 function removeTile(sid) {
     if (!sid) return;
-    tiles?.querySelectorAll(`[data-sid="${CSS.escape(sid)}"]`).forEach(el => el.remove());
-    whiteboardCanvas?.parentElement?.querySelectorAll(`[data-sid="${CSS.escape(sid)}"]`).forEach(el => el.remove());
-    if (!whiteboardCanvas?.parentElement?.querySelector(".ksc-screen-share-on-board") && whiteboardCanvas) {
-        whiteboardCanvas.style.background = "#fff";
-        drawWhiteboard();
-    }
+    tiles?.querySelectorAll(`[data-sid="${CSS.escape(sid)}"]`).forEach(el => {
+        if (expandedTile === el) expandedTile = null;
+        el.remove();
+    });
     syncMediaEmptyState();
 }
 
 function syncMediaEmptyState() {
     if (!tiles) return;
     const empty = tiles.querySelector(".ksc-room-empty");
-    if (empty) empty.hidden = tiles.querySelectorAll(".ksc-tile-video").length > 0
-        || !!whiteboardCanvas?.parentElement?.querySelector(".ksc-screen-share-on-board");
+    const tileCount = tiles.querySelectorAll(".ksc-tile-video").length;
+    if (empty) empty.hidden = tileCount > 0;
+    tiles.classList.toggle("ksc-room-grid-single", tileCount === 1);
 }

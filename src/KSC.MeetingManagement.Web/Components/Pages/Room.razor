@@ -22,16 +22,39 @@
 @if (_phase == Phase.Lobby || _phase == Phase.Waiting || _phase == Phase.Joining)
 {
     <MudPaper Class="ksc-card pa-4 ksc-room-lobby" Elevation="0">
-        <video @ref="_preview" class="ksc-preview" autoplay playsinline muted aria-label="پیش‌نمایش تصویر شما"></video>
+        <div class="ksc-room-lobby-copy">
+            <span class="ksc-room-eyebrow">اتاق امن جلسه</span>
+            <h1>برای پیوستن آماده‌اید؟</h1>
+            <p>پیش از ورود، تصویر و صدای خود را بررسی کنید. تنظیمات را هر زمان می‌توانید تغییر دهید.</p>
+            <div class="ksc-room-lobby-meeting"><MudIcon Icon="@Icons.Material.Filled.MeetingRoom" /> <span>شناسهٔ جلسه</span><strong>@MeetingId.ToString("N")[..8]</strong></div>
+        </div>
+        <div class="ksc-room-preview-wrap">
+            <video @ref="_preview" class="ksc-preview" autoplay playsinline muted aria-label="پیش‌نمایش تصویر شما"></video>
+            @if (!_camera || _previewProblem is not null)
+            {
+                <div class="ksc-room-preview-placeholder" role="status">
+                    <span><MudIcon Icon="@Icons.Material.Filled.VideocamOff" /></span>
+                    <strong>@(!_camera ? "دوربین خاموش است" : "پیش‌نمایش در دسترس نیست")</strong>
+                    <small>@(!_camera ? "می‌توانید با صدا وارد جلسه شوید." : "مجوز دوربین یا اتصال دستگاه را بررسی کنید؛ همچنان می‌توانید وارد شوید.")</small>
+                </div>
+            }
+            <span class="ksc-room-preview-label"><MudIcon Icon="@Icons.Material.Filled.Person" /> پیش‌نمایش شما</span>
+        </div>
         @if (_previewProblem is not null)
         {
             <MudAlert Severity="Severity.Warning" Class="my-3" role="alert">@_previewProblem</MudAlert>
         }
         <div class="ksc-room-toggles">
-            <MudToggleIconButton Toggled="_mic" ToggledChanged="OnMicPreviewChanged" Icon="@Icons.Material.Filled.MicOff" ToggledIcon="@Icons.Material.Filled.Mic"
-                                 Color="Color.Default" ToggledColor="Color.Primary" aria-label="میکروفون" Disabled="_phase != Phase.Lobby" />
-            <MudToggleIconButton Toggled="_camera" ToggledChanged="OnCameraPreviewChanged" Icon="@Icons.Material.Filled.VideocamOff" ToggledIcon="@Icons.Material.Filled.Videocam"
-                                 Color="Color.Default" ToggledColor="Color.Primary" aria-label="دوربین" Disabled="_phase != Phase.Lobby" />
+            <div class="ksc-room-device-control">
+                <MudToggleIconButton Toggled="_mic" ToggledChanged="OnMicPreviewChanged" Icon="@Icons.Material.Filled.MicOff" ToggledIcon="@Icons.Material.Filled.Mic"
+                                     Color="Color.Default" ToggledColor="Color.Primary" aria-label="میکروفون" Disabled="_phase != Phase.Lobby" />
+                <span>@(_mic ? "میکروفون روشن" : "میکروفون خاموش")</span>
+            </div>
+            <div class="ksc-room-device-control">
+                <MudToggleIconButton Toggled="_camera" ToggledChanged="OnCameraPreviewChanged" Icon="@Icons.Material.Filled.VideocamOff" ToggledIcon="@Icons.Material.Filled.Videocam"
+                                     Color="Color.Default" ToggledColor="Color.Primary" aria-label="دوربین" Disabled="_phase != Phase.Lobby" />
+                <span>@(_camera ? "دوربین روشن" : "دوربین خاموش")</span>
+            </div>
         </div>
 
         @if (_message is not null)
@@ -39,7 +62,7 @@
             <MudAlert Severity="@(_phase == Phase.Waiting ? Severity.Info : Severity.Error)" Class="my-3" role="status">@_message</MudAlert>
         }
 
-        <MudButton Variant="Variant.Filled" Color="Color.Primary" Size="Size.Large" FullWidth="true" OnClick="JoinAsync"
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" Size="Size.Large" Class="ksc-room-join" OnClick="JoinAsync"
                    Disabled="_phase != Phase.Lobby" StartIcon="@Icons.Material.Filled.MeetingRoom">ورود به جلسه</MudButton>
     </MudPaper>
 }
@@ -48,11 +71,48 @@
     @if (_phase == Phase.InRoom)
     {
         <div class="ksc-room-bar" role="toolbar" aria-label="کنترل جلسه">
+            <div class="ksc-room-presence-controls">
             <MudButton Variant="Variant.Outlined" Size="Size.Small" Class="ksc-room-roster-toggle"
                        StartIcon="@Icons.Material.Filled.PeopleAlt" aria-expanded="@_showParticipants"
                        aria-controls="ksc-room-participant-list" OnClick="() => _showParticipants = !_showParticipants">
                 شرکت‌کنندگان · @_participants.Count
             </MudButton>
+            <MudButton Variant="Variant.Outlined" Size="Size.Small" Class="ksc-room-whiteboard-toggle"
+                       StartIcon="@Icons.Material.Filled.Edit" aria-expanded="@_showWhiteboard"
+                       aria-controls="ksc-room-whiteboard" OnClick="ToggleWhiteboardAsync">
+                @(_showWhiteboard ? "بستن وایت‌برد" : "وایت‌برد")
+            </MudButton>
+            @if (_isPresenter)
+            {
+                <MudButton Variant="Variant.Outlined" Size="Size.Small" Class="ksc-mute-all-control" OnClick="MuteAllAsync" Disabled="_mutingAll"
+                           StartIcon="@Icons.Material.Filled.MicOff" aria-label="بی‌صدا کردن همهٔ شرکت‌کنندگان">
+                    @(_mutingAll ? "در حال بی‌صدا کردن…" : "بی‌صدا کردن همه")
+                </MudButton>
+            }
+            @if (!_isPresenter && _muteAllNotice)
+            {
+                <MudAlert Severity="Severity.Warning" Dense="true" Class="ksc-mute-all-notice" role="status">
+                    برگزارکننده میکروفن‌ها را بی‌صدا کرده است.
+                    @if (_speakApproved)
+                    {
+                        <span>درخواست شما تأیید شد؛ برای صحبت میکروفن را روشن کنید.</span>
+                    }
+                    else if (_speakRequested)
+                    {
+                        <span>درخواست صحبت برای برگزارکننده ارسال شده است.</span>
+                    }
+                    else
+                    {
+                        <span>برای صحبت از دکمهٔ «درخواست صحبت» استفاده کنید.</span>
+                    }
+                </MudAlert>
+            }
+            @if (!_isPresenter)
+            {
+                <MudButton Variant="Variant.Outlined" Size="Size.Small" OnClick='() => RequestPermissionAsync("speak")' Disabled="@(_speakRequested || _speakApproved)" StartIcon="@Icons.Material.Filled.FrontHand">
+                    @(_speakApproved ? "اجازهٔ صحبت دارید" : _speakRequested ? "درخواست صحبت ارسال شد" : "درخواست صحبت")
+                </MudButton>
+            }
             @if (_state == "reconnecting")
             {
                 <MudChip T="string" Color="Color.Warning" Size="Size.Small">در حال اتصال مجدد…</MudChip>
@@ -63,48 +123,133 @@
                     کیفیت شبکه: @ConnectionQualityLabel(_connectionQuality) · @_videoProfile
                 </MudChip>
             }
-            <MudSpacer />
+            </div>
+            <div class="ksc-room-media-controls" aria-label="صدا و تصویر">
             <MudToggleIconButton Toggled="_mic" ToggledChanged="SetMicAsync" Icon="@Icons.Material.Filled.MicOff" ToggledIcon="@Icons.Material.Filled.Mic"
-                                 Color="Color.Error" ToggledColor="Color.Primary" aria-label="میکروفون" />
+                                  Color="Color.Error" ToggledColor="Color.Primary" Class="ksc-room-control-toggle" aria-label="میکروفون" title="میکروفون"
+                                  Disabled="@(!_isPresenter && !_speakApproved)" />
             <MudToggleIconButton Toggled="_camera" ToggledChanged="SetCameraAsync" Icon="@Icons.Material.Filled.VideocamOff" ToggledIcon="@Icons.Material.Filled.Videocam"
-                                 Color="Color.Error" ToggledColor="Color.Primary" aria-label="دوربین" />
+                                 Color="Color.Error" ToggledColor="Color.Primary" Class="ksc-room-control-toggle" aria-label="دوربین" title="دوربین" />
             <MudButton Variant="Variant.Outlined" Color="@(_sharing ? Color.Primary : Color.Default)" OnClick="ShareScreenAsync"
+                       Disabled="@(!_isPresenter && !_screenShareApproved && _screenShareRequested)"
                        StartIcon="@(_sharing ? Icons.Material.Filled.StopScreenShare : Icons.Material.Filled.ScreenShare)" aria-label="اشتراک صفحه">
-                @(_sharing ? "توقف اشتراک" : _screenShareRequested ? "درخواست ارسال شد" : "اشتراک صفحه")
+                        @(_sharing ? "توقف اشتراک" : _screenShareRequested ? "درخواست ارسال شد" : _isPresenter || _screenShareApproved ? "اشتراک صفحه" : "درخواست اشتراک صفحه")
             </MudButton>
-            @if (_isPresenter && _screenShareRequests.Count > 0)
+            </div>
+            <div class="ksc-room-tools-controls" aria-label="ابزارهای جلسه">
+            @if (!_isPresenter && !_whiteboardApproved)
             {
-                <div class="ksc-share-requests" role="group" aria-label="درخواست‌های اشتراک صفحه">
-                    @foreach (var request in _screenShareRequests)
+                <MudButton Variant="Variant.Outlined" Size="Size.Small" OnClick='() => RequestPermissionAsync("whiteboard")' Disabled="@_whiteboardRequested" StartIcon="@Icons.Material.Filled.Edit">
+                    @(_whiteboardRequested ? "درخواست وایت‌برد ارسال شد" : "درخواست وایت‌برد")
+                </MudButton>
+            }
+            @if (_isPresenter && _permissionRequests.Count > 0)
+            {
+                <div class="ksc-permission-requests" role="group" aria-label="درخواست‌های دسترسی">
+                    @foreach (var participantRequest in _permissionRequests.GroupBy(request => new { request.Identity, request.Name }))
                     {
-                        <span @key="request.Identity">درخواست اشتراک: @request.Name</span>
-                        <MudButton Size="Size.Small" Color="Color.Primary" OnClick="() => ApproveScreenShareAsync(request.Identity)">اجازه</MudButton>
-                        <MudButton Size="Size.Small" Color="Color.Error" OnClick="() => RejectScreenShareAsync(request.Identity)">رد</MudButton>
+                        <div class="ksc-permission-request" @key="participantRequest.Key.Identity">
+                            <span class="ksc-raised-hand" aria-label="دست بلند کرده">✋</span>
+                            <strong>@participantRequest.Key.Name</strong>
+                            <MudButton Size="Size.Small" Color="Color.Primary" OnClick='() => DecidePermissionAsync(participantRequest.Key.Identity, "speak", true)'>اجازهٔ صحبت</MudButton>
+                            <MudButton Size="Size.Small" Color="Color.Primary" OnClick='() => DecidePermissionAsync(participantRequest.Key.Identity, "screen-share", true)'>اجازهٔ اشتراک صفحه</MudButton>
+                            <MudButton Size="Size.Small" Color="Color.Primary" OnClick='() => DecidePermissionAsync(participantRequest.Key.Identity, "whiteboard", true)'>اجازهٔ وایت‌برد</MudButton>
+                            <MudButton Size="Size.Small" Color="Color.Error" OnClick='() => RejectPermissionRequestAsync(participantRequest.Key.Identity)'>رد درخواست</MudButton>
+                        </div>
                     }
                 </div>
             }
             @if (_isPresenter)
             {
-                <MudButton Variant="Variant.Outlined" Color="@(_recording ? Color.Error : Color.Default)" OnClick="ToggleRecordingAsync"
-                           StartIcon="@(_recording ? Icons.Material.Filled.StopCircle : Icons.Material.Filled.FiberManualRecord)">
-                    @(_recording ? "توقف ضبط" : "ضبط جلسه")
+                <MudButton Variant="Variant.Outlined" Color="@(_serverRecording ? Color.Error : Color.Default)" OnClick="ToggleServerRecordingAsync"
+                           StartIcon="@(_serverRecording ? Icons.Material.Filled.StopCircle : Icons.Material.Filled.FiberManualRecord)">
+                    @(_serverRecording ? "توقف ضبط سروری" : "ضبط سروری جلسه")
+                </MudButton>
+                <MudButton Variant="Variant.Outlined" OnClick="TranscribeAsync" Disabled="@(_transcribing || _serverRecording)"
+                           StartIcon="@Icons.Material.Filled.Subtitles">
+                    @(_transcribing ? "در حال رونویسی…" : "رونویسی محلی")
                 </MudButton>
             }
-            @if (_recording)
+            @if (_serverRecording)
             {
-                <MudChip T="string" Color="Color.Error" Size="Size.Small" role="status">● ضبط جلسه در حال انجام است</MudChip>
+                <MudChip T="string" Color="Color.Error" Size="Size.Small" role="status">● ضبط سروری فعال است</MudChip>
             }
+            <MudButton Variant="Variant.Outlined" Color="@(_localRecording ? Color.Error : Color.Default)" OnClick="ToggleLocalRecordingAsync"
+                       StartIcon="@(_localRecording ? Icons.Material.Filled.StopCircle : Icons.Material.Filled.Download)">
+                @(_localRecording ? $"توقف ضبط محلی · بخش {_localRecordingPart:00}" : "ضبط برای من")
+            </MudButton>
+            @if (_localRecording)
+            {
+                <MudChip T="string" Color="Color.Warning" Size="Size.Small" Class="ksc-local-recording-chip" role="status">● ضبط محلی مرورگر · ذخیره روی دستگاه شما</MudChip>
+            }
+            </div>
             <MudButton Variant="Variant.Filled" Color="Color.Error" OnClick="LeaveAsync" StartIcon="@Icons.Material.Filled.CallEnd">خروج</MudButton>
         </div>
-        <section class="ksc-whiteboard" aria-label="تخته وایت‌برد مشترک">
+        <div @ref="_tiles" class="ksc-room-grid" aria-live="polite">
+            <div class="ksc-room-empty" role="status">
+                <span class="ksc-room-empty-icon"><MudIcon Icon="@Icons.Material.Filled.VideocamOff" Size="Size.Large" /></span>
+                <strong>در انتظار تصویر شرکت‌کنندگان</strong>
+                <span>با روشن‌شدن دوربین‌ها، تصویر حاضران در این بخش نمایش داده می‌شود.</span>
+            </div>
+        </div>
+        @if (_transcript is not null)
+        {
+            <MudExpansionPanels Class="ksc-transcript">
+                <MudExpansionPanel Text="متن پیاده‌شدهٔ جلسه">
+                    <MudText Typo="Typo.caption">زبان: @_transcript.Language · زمان تولید: @_transcript.GeneratedAtUtc.ToLocalTime().ToString("yyyy/MM/dd HH:mm")</MudText>
+                    <MudText Class="mt-2" Style="white-space: pre-wrap; direction: rtl">@_transcript.Text</MudText>
+                </MudExpansionPanel>
+            </MudExpansionPanels>
+        }
+        @if (_showParticipants)
+        {
+            <section class="ksc-room-roster" id="ksc-room-participant-list" role="region" aria-label="شرکت‌کنندگان جلسه">
+                <div class="ksc-room-roster-heading">
+                    <strong>افراد حاضر در جلسه</strong>
+                </div>
+                @if (_participants.Count == 0)
+                {
+                    <span class="ksc-room-roster-empty">فهرست شرکت‌کنندگان در حال دریافت است…</span>
+                }
+                else
+                {
+                    <ul class="ksc-room-roster-list">
+                        @foreach (var participant in _participants)
+                        {
+                            <li @key="participant.Identity">
+                                <span class="ksc-room-roster-avatar" aria-hidden="true">@ParticipantInitial(participant.Name)</span>
+                                <span class="ksc-room-roster-name">
+                                    @participant.Name @if (participant.IsLocal) { <small>(شما)</small> }
+                                    @if (_permissionRequests.Any(request => request.Identity == participant.Identity)
+                                        || (!_isPresenter && participant.IsLocal && (_speakRequested || _screenShareRequested || _whiteboardRequested)))
+                                    {
+                                        <span class="ksc-raised-hand" role="img" aria-label="درخواست دسترسی در انتظار تأیید" title="درخواست دسترسی در انتظار تأیید">✋</span>
+                                    }
+                                </span>
+                                <span class="ksc-room-mic-state @(participant.IsMicrophoneEnabled ? "on" : "off")" role="status" aria-label="@(participant.IsMicrophoneEnabled ? "میکروفون روشن" : "میکروفون بی‌صدا")">
+                                    <MudIcon Icon="@(participant.IsMicrophoneEnabled ? Icons.Material.Filled.Mic : Icons.Material.Filled.MicOff)"
+                                             Class="@(participant.IsMicrophoneEnabled ? string.Empty : "ksc-mic-off-icon")" />
+                                    <span>@(participant.IsMicrophoneEnabled ? "میکروفون روشن" : "بی‌صدا")</span>
+                                </span>
+                            </li>
+                        }
+                    </ul>
+                }
+            </section>
+        }
+    }
+    @if (_phase == Phase.InRoom)
+    {
+        <section class="ksc-whiteboard @(_showWhiteboard ? string.Empty : "ksc-whiteboard-collapsed")" id="ksc-room-whiteboard" aria-label="تخته وایت‌برد مشترک" aria-hidden="@(!_showWhiteboard)">
             <div class="ksc-whiteboard-toolbar">
                 <div>
                     <strong>تختهٔ وایت‌برد</strong>
-                    <span>@(_isPresenter ? "در حال ارائه — شما کنترل تخته را دارید" : "در حال مشاهدهٔ تختهٔ برگزارکننده")</span>
+                    <span>@(_isPresenter ? "در حال ارائه — شما کنترل تخته را دارید" : _whiteboardApproved ? "اجازهٔ ویرایش وایت‌برد را دارید" : "در حال مشاهدهٔ تختهٔ برگزارکننده")</span>
                 </div>
-                @if (_isPresenter)
+                @if (_isPresenter || _whiteboardApproved)
                 {
                     <div class="ksc-whiteboard-tools" role="toolbar" aria-label="ابزارهای وایت‌برد">
+                        <button type="button" class="ksc-board-tool @(_whiteboardTool == "select" ? "active" : string.Empty)" aria-label="انتخاب و جابه‌جایی" title="انتخاب و جابه‌جایی" @onclick="SelectSelectAsync"><span>↖</span></button>
                         <button type="button" class="ksc-board-tool @(_whiteboardTool == "pen" ? "active" : string.Empty)" aria-label="قلم آزاد" title="قلم آزاد" @onclick="SelectPenAsync"><span>✎</span></button>
                         <button type="button" class="ksc-board-tool @(_whiteboardTool == "text" ? "active" : string.Empty)" aria-label="نوشتن متن" title="متن" @onclick="SelectTextAsync"><span>T</span></button>
                         <button type="button" class="ksc-board-tool @(_whiteboardTool == "line" ? "active" : string.Empty)" aria-label="رسم خط" title="خط" @onclick="SelectLineAsync"><span>／</span></button>
@@ -119,50 +264,10 @@
                 }
             </div>
             <div class="ksc-whiteboard-stage">
-                <canvas @ref="_whiteboard" class="ksc-whiteboard-canvas" aria-label="بوم وایت‌برد"></canvas>
+                <canvas id="ksc-room-whiteboard-canvas" @ref="_whiteboard" class="ksc-whiteboard-canvas" aria-label="بوم وایت‌برد"></canvas>
             </div>
         </section>
-        @if (_showParticipants)
-        {
-            <section class="ksc-room-roster" id="ksc-room-participant-list" role="region" aria-label="شرکت‌کنندگان جلسه">
-                <div class="ksc-room-roster-heading">
-                    <strong>افراد حاضر در جلسه</strong>
-                    @if (_canManageRoom)
-                    {
-                        <MudButton Variant="Variant.Outlined" Color="Color.Warning" Size="Size.Small" OnClick="MuteAllAsync" Disabled="_mutingAll"
-                                   StartIcon="@Icons.Material.Filled.MicOff" aria-label="بی‌صدا کردن همهٔ شرکت‌کنندگان">بی‌صدا کردن همه</MudButton>
-                    }
-                </div>
-                @if (_participants.Count == 0)
-                {
-                    <span class="ksc-room-roster-empty">فهرست شرکت‌کنندگان در حال دریافت است…</span>
-                }
-                else
-                {
-                    <ul class="ksc-room-roster-list">
-                        @foreach (var participant in _participants)
-                        {
-                            <li @key="participant.Identity">
-                                <span class="ksc-room-roster-avatar" aria-hidden="true">@ParticipantInitial(participant.Name)</span>
-                                <span class="ksc-room-roster-name">@participant.Name @if (participant.IsLocal) { <small>(شما)</small> }</span>
-                                <span class="ksc-room-mic-state @(participant.IsMicrophoneEnabled ? "on" : "off")" role="status" aria-label="@(participant.IsMicrophoneEnabled ? "میکروفون روشن" : "میکروفون بی‌صدا")">
-                                    <MudIcon Icon="@(participant.IsMicrophoneEnabled ? Icons.Material.Filled.Mic : Icons.Material.Filled.MicOff)" />
-                                    <span>@(participant.IsMicrophoneEnabled ? "میکروفون روشن" : "بی‌صدا")</span>
-                                </span>
-                            </li>
-                        }
-                    </ul>
-                }
-            </section>
-        }
     }
-    <div @ref="_tiles" class="ksc-room-grid" aria-live="polite">
-        <div class="ksc-room-empty" role="status">
-            <span class="ksc-room-empty-icon"><MudIcon Icon="@Icons.Material.Filled.VideocamOff" Size="Size.Large" /></span>
-            <strong>هنوز تصویری دریافت نشده</strong>
-            <span>با روشن‌کردن دوربین، تصویر شما و سایر حاضران اینجا نمایش داده می‌شود.</span>
-        </div>
-    </div>
 </div>
 
 @if (_phase == Phase.Ended)
@@ -178,7 +283,7 @@
 
 @code {
     public sealed record RoomParticipant(string Identity, string Name, bool IsLocal, bool IsMicrophoneEnabled = false);
-    public sealed record ScreenShareRequest(string Identity, string Name);
+    public sealed record PermissionRequest(string Identity, string Name, string Capability);
 
     private enum Phase { Lobby, Joining, Waiting, InRoom, Ended }
 
@@ -197,18 +302,27 @@
     private bool _mic = true;
     private bool _camera = true;
     private bool _sharing;
-    private bool _recording;
+    private bool _serverRecording;
+    private bool _transcribing;
+    private MeetingTranscriptDto? _transcript;
+    private bool _localRecording;
+    private int _localRecordingPart = 1;
     private bool _screenShareRequested;
     private bool _screenShareApproved;
+    private bool _whiteboardRequested;
+    private bool _whiteboardApproved;
     private bool _disposed;
     private bool _restartPreview;
     private bool _canReconnect;
-    private bool _canManageRoom;
     private bool _isPresenter;
     private string _whiteboardTool = "pen";
-    private IReadOnlyList<ScreenShareRequest> _screenShareRequests = [];
+    private IReadOnlyList<PermissionRequest> _permissionRequests = [];
     private bool _mutingAll;
     private bool _showParticipants;
+    private bool _showWhiteboard;
+    private bool _muteAllNotice;
+    private bool _speakRequested;
+    private bool _speakApproved;
 
     [Parameter]
     public Guid MeetingId { get; set; }
@@ -237,12 +351,6 @@
         }
 
         await RestartPreviewAsync();
-    }
-
-    protected override void OnParametersSet()
-    {
-        var roles = Session.CurrentTenant?.Roles ?? [];
-        _canManageRoom = roles.Any(role => role is "TenantOwner" or "TenantAdministrator" or "MeetingOrganizer");
     }
 
     private async Task OnCameraPreviewChanged(bool value)
@@ -326,14 +434,35 @@
 
         _phase = Phase.InRoom;
         _isPresenter = room.Role == "Host";
+        _transcript = _isPresenter ? await Rooms.GetTranscriptAsync(MeetingId, CancellationToken.None) : null;
         StateHasChanged();
         await Task.Yield();
         var ice = room.IceServers?.Select(s => new { urls = s.Urls, username = s.Username, credential = s.Credential }).ToArray();
-        var outcome = await _module.InvokeAsync<string>("connect", room.ServerUrl, room.Token, ice, _tiles, _whiteboard, _self, _mic, _camera, room.PresenterIdentity, _isPresenter);
-        if (outcome != "ok")
+        if (!_isPresenter && !_speakApproved) _mic = false;
+        try
         {
+            var outcome = await _module.InvokeAsync<string>("connect", room.ServerUrl, room.Token, ice, _tiles, "ksc-room-whiteboard-canvas", _self, _mic, _camera, room.PresenterIdentity, _isPresenter);
+            if (outcome != "ok")
+            {
+                _phase = Phase.Lobby;
+                _message = $"اتصال به سرویس جلسه ({room.ServerUrl}) برقرار نشد. وضعیت LiveKit و دسترسی این مرورگر به نشانی را بررسی کنید. جزئیات: {outcome}";
+                _restartPreview = true;
+                return;
+            }
+        }
+        catch (JSException ex)
+        {
+            try
+            {
+                await _module.InvokeVoidAsync("disconnect");
+            }
+            catch (JSException)
+            {
+                // Preserve the recoverable lobby state even if LiveKit cleanup also fails.
+            }
             _phase = Phase.Lobby;
-            _message = "اتصال به اتاق برقرار نشد. اینترنت خود را بررسی کنید و دوباره تلاش کنید.";
+            _message = "اتصال جلسه برقرار شد، اما آماده‌سازی ابزارهای جلسه کامل نشد. صفحه را تازه کنید و دوباره تلاش کنید.";
+            Snackbar.Add($"خطای آماده‌سازی اتاق: {ex.Message}", Severity.Error);
             _restartPreview = true;
             return;
         }
@@ -343,20 +472,55 @@
 
     private async Task SetMicAsync(bool on)
     {
-        _mic = on;
+        if (on && !_isPresenter && !_speakApproved)
+        {
+            Snackbar.Add("برای روشن‌کردن میکروفن، ابتدا از برگزارکننده اجازهٔ صحبت بگیرید.", Severity.Warning);
+            _mic = false;
+            return;
+        }
+
         if (_module is not null)
         {
-            _mic = await _module.InvokeAsync<bool>("setMic", on);
+            try
+            {
+                var enabled = await _module.InvokeAsync<bool>("setMic", on);
+                if (enabled != on)
+                {
+                    Snackbar.Add("تغییر وضعیت میکروفون انجام نشد. مجوز دسترسی یا اتصال دستگاه را بررسی کنید.", Severity.Error);
+                }
+                _mic = enabled;
+                return;
+            }
+            catch (JSException ex)
+            {
+                Snackbar.Add($"تغییر وضعیت میکروفون انجام نشد: {ex.Message}", Severity.Error);
+            }
         }
+
+        _mic = !on;
     }
 
     private async Task SetCameraAsync(bool on)
     {
-        _camera = on;
         if (_module is not null)
         {
-            _camera = await _module.InvokeAsync<bool>("setCamera", on);
+            try
+            {
+                var enabled = await _module.InvokeAsync<bool>("setCamera", on);
+                if (enabled != on)
+                {
+                    Snackbar.Add("تغییر وضعیت وب‌کم انجام نشد. مجوز دوربین یا اتصال آن را بررسی کنید.", Severity.Error);
+                }
+                _camera = enabled;
+                return;
+            }
+            catch (JSException ex)
+            {
+                Snackbar.Add($"تغییر وضعیت وب‌کم انجام نشد: {ex.Message}", Severity.Error);
+            }
         }
+
+        _camera = !on;
     }
 
     private async Task ShareScreenAsync()
@@ -367,61 +531,164 @@
             return;
         }
 
-        if (_isPresenter)
+        if (_isPresenter || _screenShareApproved)
         {
             if (_module is not null) _sharing = await _module.InvokeAsync<bool>("setScreenShare", true);
             return;
         }
 
-        if (_screenShareApproved)
-        {
-            if (_module is not null) _sharing = await _module.InvokeAsync<bool>("setScreenShare", true);
-            return;
-        }
-
-        if (_screenShareRequested) return;
-        if (_module is not null && await _module.InvokeAsync<bool>("requestScreenShare"))
-        {
-            _screenShareRequested = true;
-            Snackbar.Add("درخواست اشتراک صفحه برای برگزارکننده ارسال شد.", Severity.Info);
-        }
+        await RequestPermissionAsync("screen-share");
     }
 
-    private async Task ApproveScreenShareAsync(string identity)
+    private async Task RequestPermissionAsync(string capability)
     {
-        if (!_isPresenter) return;
-        var error = await Rooms.SetScreenSharePermissionAsync(MeetingId, identity, true, CancellationToken.None);
+        if (_isPresenter || _module is null) return;
+        if (capability == "speak" && (_speakRequested || _speakApproved)) return;
+        if (capability == "screen-share" && _screenShareRequested) return;
+        if (capability == "whiteboard" && (_whiteboardRequested || _whiteboardApproved)) return;
+        if (!await _module.InvokeAsync<bool>("requestPermission", capability))
+        {
+            Snackbar.Add("ارسال درخواست ممکن نشد؛ اتصال جلسه را بررسی کنید.", Severity.Error);
+            return;
+        }
+
+        SetPermissionRequested(capability, true);
+        Snackbar.Add(capability switch
+        {
+            "speak" => "درخواست صحبت برای برگزارکننده ارسال شد.",
+            "screen-share" => "درخواست اشتراک صفحه برای برگزارکننده ارسال شد.",
+            _ => "درخواست ویرایش وایت‌برد برای برگزارکننده ارسال شد."
+        }, Severity.Info);
+    }
+
+    private async Task DecidePermissionAsync(string identity, string capability, bool allowed)
+    {
+        if (!_isPresenter || _module is null) return;
+        string? error = null;
+        if (capability == "speak")
+        {
+            error = await Rooms.SetMicrophonePermissionAsync(MeetingId, identity, allowed, CancellationToken.None);
+        }
+        else if (capability == "screen-share")
+        {
+            error = await Rooms.SetScreenSharePermissionAsync(MeetingId, identity, allowed, CancellationToken.None);
+        }
         if (error is not null)
         {
             Snackbar.Add(error, Severity.Error);
             return;
         }
 
-        if (_module is not null) await _module.InvokeVoidAsync("decideScreenShare", identity, true);
-        _screenShareRequests = _screenShareRequests.Where(request => request.Identity != identity).ToArray();
-    }
-
-    private async Task RejectScreenShareAsync(string identity)
-    {
-        if (_module is not null) await _module.InvokeVoidAsync("decideScreenShare", identity, false);
-        _screenShareRequests = _screenShareRequests.Where(request => request.Identity != identity).ToArray();
-    }
-
-    private async Task ToggleRecordingAsync()
-    {
-        if (!_isPresenter) return;
-        if (!_recording && !await JS.InvokeAsync<bool>("confirm", "با شروع ضبط، تصویر و صدای جلسه روی سرور ذخیره می‌شود. از آگاه بودن شرکت‌کنندگان اطمینان دارید؟")) return;
-        var starting = !_recording;
-        var error = await Rooms.SetRecordingAsync(MeetingId, starting, CancellationToken.None);
-        if (error is not null)
+        if (!await _module.InvokeAsync<bool>("decidePermission", identity, capability, allowed))
         {
-            Snackbar.Add(error, Severity.Error);
+            Snackbar.Add("ارسال پاسخ دسترسی ممکن نشد؛ اتصال جلسه را بررسی کنید.", Severity.Error);
             return;
         }
 
-        _recording = starting;
-        if (_module is not null) await _module.InvokeVoidAsync("setRecordingStatus", _recording);
-        Snackbar.Add(starting ? "ضبط جلسه شروع شد." : "درخواست توقف ضبط ارسال شد.", Severity.Info);
+        _permissionRequests = _permissionRequests.Where(request => request.Identity != identity).ToArray();
+    }
+
+    private Task RejectPermissionRequestAsync(string identity)
+    {
+        var request = _permissionRequests.FirstOrDefault(item => item.Identity == identity);
+        return request is null ? Task.CompletedTask : DecidePermissionAsync(identity, request.Capability, false);
+    }
+
+    private void SetPermissionRequested(string capability, bool requested)
+    {
+        switch (capability)
+        {
+            case "speak": _speakRequested = requested; break;
+            case "screen-share": _screenShareRequested = requested; break;
+            case "whiteboard": _whiteboardRequested = requested; break;
+        }
+    }
+
+    private async Task ToggleServerRecordingAsync()
+    {
+        if (!_isPresenter) return;
+        if (!_serverRecording && !await JS.InvokeAsync<bool>("confirm", "با شروع ضبط سروری، تصویر و صدای جلسه روی سرور ذخیره می‌شود و در دسترس مدیران مجاز قرار می‌گیرد. از آگاه بودن شرکت‌کنندگان اطمینان دارید؟")) return;
+        var starting = !_serverRecording;
+        try
+        {
+            var error = await Rooms.SetRecordingAsync(MeetingId, starting, CancellationToken.None);
+            if (error is not null)
+            {
+                Snackbar.Add(error, Severity.Error);
+                return;
+            }
+
+            _serverRecording = starting;
+            if (_module is not null) await _module.InvokeVoidAsync("setRecordingStatus", _serverRecording);
+            Snackbar.Add(starting ? "ضبط سروری جلسه شروع شد." : "درخواست توقف ضبط سروری ارسال شد.", Severity.Info);
+        }
+        catch (JSException ex)
+        {
+            Snackbar.Add($"ارتباط با سرویس ضبط برقرار نشد: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private async Task TranscribeAsync()
+    {
+        if (!_isPresenter || _transcribing) return;
+        _transcribing = true;
+        try
+        {
+            var (transcript, error) = await Rooms.TranscribeAsync(MeetingId, CancellationToken.None);
+            if (error is not null)
+            {
+                Snackbar.Add(error, Severity.Error);
+                return;
+            }
+
+            _transcript = transcript;
+            Snackbar.Add("رونویسی محلی جلسه انجام شد.", Severity.Success);
+        }
+        finally
+        {
+            _transcribing = false;
+        }
+    }
+
+    private async Task ToggleLocalRecordingAsync()
+    {
+        if (_module is null) return;
+        try
+        {
+            if (_localRecording)
+            {
+                await _module.InvokeVoidAsync("stopLocalRecording");
+                return;
+            }
+
+            if (!await JS.InvokeAsync<bool>("confirm", "ضبط محلی از زبانه یا صفحه‌ای که انتخاب می‌کنید انجام می‌شود و فایل‌ها فقط روی دستگاه شما ذخیره می‌شوند. در پنجرهٔ مرورگر، زبانهٔ جلسه و در صورت نیاز گزینهٔ اشتراک صدا را انتخاب کنید. ضبط را با اطلاع شرکت‌کنندگان انجام دهید.")) return;
+            var result = await _module.InvokeAsync<string>("startLocalRecording", MeetingId);
+            switch (result)
+            {
+                case "started-audio":
+                    _localRecording = true;
+                    _localRecordingPart = 1;
+                    Snackbar.Add("ضبط محلی شروع شد؛ فایل‌ها هر ۳۰ دقیقه روی دستگاه شما دانلود می‌شوند.", Severity.Info);
+                    break;
+                case "started-no-audio":
+                    _localRecording = true;
+                    _localRecordingPart = 1;
+                    Snackbar.Add("ضبط تصویر شروع شد، اما مرورگر صدای زبانه را ارائه نکرد. برای ضبط صدا، زبانهٔ جلسه و گزینهٔ اشتراک صدا را انتخاب کنید.", Severity.Warning);
+                    break;
+                case "cancelled":
+                    break;
+                case "unsupported":
+                    Snackbar.Add("این مرورگر ضبط صفحه را پشتیبانی نمی‌کند؛ از نسخهٔ جدید Chrome یا Edge استفاده کنید.", Severity.Error);
+                    break;
+                default:
+                    Snackbar.Add($"شروع ضبط محلی ناموفق بود ({result}). مجوز ضبط صفحه را در مرورگر بررسی کنید.", Severity.Error);
+                    break;
+            }
+        }
+        catch (JSException ex)
+        {
+            Snackbar.Add($"ضبط محلی مرورگر در دسترس نیست: {ex.Message}", Severity.Error);
+        }
     }
 
     private async Task SetWhiteboardColorAsync(ChangeEventArgs args)
@@ -433,12 +700,31 @@
     }
 
     private Task SelectPenAsync() => SelectWhiteboardToolAsync("pen");
+    private Task SelectSelectAsync() => SelectWhiteboardToolAsync("select");
     private Task SelectTextAsync() => SelectWhiteboardToolAsync("text");
     private Task SelectLineAsync() => SelectWhiteboardToolAsync("line");
     private Task SelectRectangleAsync() => SelectWhiteboardToolAsync("rectangle");
     private Task SelectCircleAsync() => SelectWhiteboardToolAsync("circle");
     private Task SelectTriangleAsync() => SelectWhiteboardToolAsync("triangle");
     private Task SelectArrowAsync() => SelectWhiteboardToolAsync("arrow");
+
+    private async Task ToggleWhiteboardAsync()
+    {
+        _showWhiteboard = !_showWhiteboard;
+        await InvokeAsync(StateHasChanged);
+        if (_showWhiteboard && _module is not null)
+        {
+            await Task.Yield();
+            try
+            {
+                await _module.InvokeVoidAsync("refreshWhiteboard");
+            }
+            catch (JSException ex)
+            {
+                Snackbar.Add($"نمایش وایت‌برد کامل نشد: {ex.Message}", Severity.Warning);
+            }
+        }
+    }
 
     private async Task SelectWhiteboardToolAsync(string tool)
     {
@@ -458,7 +744,7 @@
 
     private async Task MuteAllAsync()
     {
-        if (!_canManageRoom || _mutingAll)
+        if (!_isPresenter || _mutingAll)
         {
             return;
         }
@@ -473,7 +759,8 @@
                 return;
             }
 
-            Snackbar.Add("میکروفون همهٔ شرکت‌کنندگان دیگر بی‌صدا شد؛ هرکس می‌تواند میکروفون خودش را دوباره روشن کند.", Severity.Success);
+            if (_module is not null) await _module.InvokeVoidAsync("announceMuteAll");
+            Snackbar.Add("میکروفون شرکت‌کنندگان بی‌صدا شد و به آن‌ها اطلاع داده شد. هرکس می‌تواند درخواست اجازهٔ صحبت بفرستد.", Severity.Success);
         }
         finally
         {
@@ -484,13 +771,14 @@
     private async Task LeaveAsync()
     {
         _canReconnect = false;
-        if (_recording && _isPresenter)
+        if (_serverRecording && _isPresenter)
         {
             var error = await Rooms.SetRecordingAsync(MeetingId, false, CancellationToken.None);
             if (error is not null) Snackbar.Add(error, Severity.Warning);
             else if (_module is not null) await _module.InvokeVoidAsync("setRecordingStatus", false);
-            _recording = false;
+            _serverRecording = false;
         }
+        if (_localRecording && _module is not null) await _module.InvokeVoidAsync("stopLocalRecording");
         _phase = Phase.Ended;
         _message = "از جلسه خارج شدید.";
         if (_module is not null)
@@ -550,10 +838,44 @@
     });
 
     [JSInvokable]
-    public Task OnScreenShareRequest(string identity, string name) => InvokeAsync(() =>
+    public Task OnMuteAllNotice() => InvokeAsync(() =>
     {
-        if (!_isPresenter || _screenShareRequests.Any(request => request.Identity == identity)) return;
-        _screenShareRequests = [.. _screenShareRequests, new ScreenShareRequest(identity, name)];
+        _muteAllNotice = true;
+        _speakRequested = false;
+        _speakApproved = false;
+        _mic = false;
+        Snackbar.Add("میکروفن‌ها توسط برگزارکننده بی‌صدا شدند. برای صحبت، درخواست اجازه بفرستید.", Severity.Warning);
+        StateHasChanged();
+    });
+
+    [JSInvokable]
+    public Task OnPermissionRequest(string identity, string name, string capability) => InvokeAsync(() =>
+    {
+        if (!_isPresenter || !new[] { "speak", "screen-share", "whiteboard" }.Contains(capability)
+            || _permissionRequests.Any(request => request.Identity == identity && request.Capability == capability)) return;
+        _permissionRequests = [.. _permissionRequests, new PermissionRequest(identity, name, capability)];
+        _showParticipants = true;
+        Snackbar.Add($"{name} درخواست دسترسی دارد؛ نوع مجوز را انتخاب کنید.", Severity.Info);
+        StateHasChanged();
+    });
+
+    [JSInvokable]
+    public Task OnSpeakDecision(bool allowed) => InvokeAsync(() =>
+    {
+        _speakRequested = false;
+        _speakApproved = allowed;
+        Snackbar.Add(allowed
+            ? "درخواست صحبت تأیید شد؛ برای صحبت میکروفن را روشن کنید."
+            : "درخواست صحبت توسط برگزارکننده رد شد.", allowed ? Severity.Success : Severity.Warning);
+        StateHasChanged();
+    });
+
+    [JSInvokable]
+    public Task OnWhiteboardDecision(bool allowed) => InvokeAsync(() =>
+    {
+        _whiteboardRequested = false;
+        _whiteboardApproved = allowed;
+        Snackbar.Add(allowed ? "اجازهٔ ویرایش وایت‌برد تأیید شد." : "درخواست وایت‌برد رد شد.", allowed ? Severity.Success : Severity.Warning);
         StateHasChanged();
     });
 
@@ -576,7 +898,24 @@
     [JSInvokable]
     public Task OnRecordingStatus(bool recording) => InvokeAsync(() =>
     {
-        _recording = recording;
+        _serverRecording = recording;
+        StateHasChanged();
+    });
+
+    [JSInvokable]
+    public Task OnLocalRecordingStatus(bool recording, string? error) => InvokeAsync(() =>
+    {
+        _localRecording = recording;
+        if (error is not null) Snackbar.Add($"ضبط محلی متوقف شد: {error}", Severity.Warning);
+        else if (!recording) Snackbar.Add("ضبط محلی متوقف شد؛ فایل بخش آخر روی دستگاه شما ذخیره شد.", Severity.Info);
+        StateHasChanged();
+    });
+
+    [JSInvokable]
+    public Task OnLocalRecordingPart(int part) => InvokeAsync(() =>
+    {
+        _localRecordingPart = part + 1;
+        Snackbar.Add($"بخش {part:00} ضبط محلی دانلود شد؛ ضبط بخش بعدی ادامه دارد.", Severity.Success);
         StateHasChanged();
     });
 
@@ -595,6 +934,14 @@
         "poor" => "ضعیف",
         "lost" => "قطع",
         _ => "نامشخص"
+    };
+
+    private static string PermissionLabel(string capability) => capability switch
+    {
+        "speak" => "درخواست صحبت",
+        "screen-share" => "درخواست اشتراک صفحه",
+        "whiteboard" => "درخواست ویرایش وایت‌برد",
+        _ => "درخواست دسترسی"
     };
 
     private static string ParticipantInitial(string name) => string.IsNullOrWhiteSpace(name) ? "؟" : name.Trim()[0].ToString();

@@ -68,7 +68,10 @@ public sealed class LiveKitRoomControl(HttpClient http, MediaOptions options, Ti
         }
     }
 
-    public async Task SetScreenSharePermissionAsync(string room, string identity, bool allowed, CancellationToken cancellationToken)
+    public Task SetScreenSharePermissionAsync(string room, string identity, bool allowed, CancellationToken cancellationToken) =>
+        SetParticipantPublishSourcePermissionAsync(room, identity, "SCREEN_SHARE", allowed, cancellationToken);
+
+    public async Task SetParticipantPublishSourcePermissionAsync(string room, string identity, string source, bool allowed, CancellationToken cancellationToken)
     {
         using var current = await CallAsync("ListParticipants", room, new Dictionary<string, object?> { ["room"] = room }, cancellationToken);
         if (current?.RootElement.TryGetProperty("participants", out var participants) != true
@@ -78,7 +81,20 @@ public sealed class LiveKitRoomControl(HttpClient http, MediaOptions options, Ti
             throw new HttpRequestException("The participant is not currently present in the LiveKit room.");
         }
 
-        var sources = allowed ? new[] { "CAMERA", "MICROPHONE", "SCREEN_SHARE" } : new[] { "CAMERA", "MICROPHONE" };
+        if (source is not ("MICROPHONE" or "SCREEN_SHARE")) throw new ArgumentOutOfRangeException(nameof(source));
+        var participant = participants.EnumerateArray().First(p => p.TryGetProperty("identity", out var value) && value.GetString() == identity);
+        var sources = new HashSet<string>(StringComparer.Ordinal) { "CAMERA" };
+        if (participant.TryGetProperty("permission", out var existingPermission)
+            && existingPermission.TryGetProperty("canPublishSources", out var existingSources)
+            && existingSources.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var existingSource in existingSources.EnumerateArray())
+            {
+                if (existingSource.GetString() is { } value) sources.Add(value);
+            }
+        }
+        if (allowed) sources.Add(source);
+        else sources.Remove(source);
         _ = await CallAsync("UpdateParticipant", room, new Dictionary<string, object?>
         {
             ["room"] = room,
@@ -88,14 +104,18 @@ public sealed class LiveKitRoomControl(HttpClient http, MediaOptions options, Ti
                 ["canSubscribe"] = true,
                 ["canPublish"] = true,
                 ["canPublishData"] = true,
-                ["canPublishSources"] = sources,
+                ["canPublishSources"] = sources.ToArray(),
             },
         }, cancellationToken);
     }
 
     public async Task<bool> SetRecordingAsync(string room, bool enabled, string? recordingPath, CancellationToken cancellationToken)
     {
-        if (!options.IsComplete || string.IsNullOrWhiteSpace(recordingPath)) return false;
+        if (!options.IsComplete || string.IsNullOrWhiteSpace(recordingPath))
+        {
+            if (enabled) throw new InvalidOperationException("Recording is not configured: media credentials and recording path are required.");
+            return false;
+        }
         if (enabled)
         {
             using var active = await CallEgressAsync("ListEgress", room, new Dictionary<string, object?>

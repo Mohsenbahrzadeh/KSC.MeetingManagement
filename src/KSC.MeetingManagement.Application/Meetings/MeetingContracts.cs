@@ -17,7 +17,10 @@ public sealed record MeetingQuery(
     DateTimeOffset? To,
     MeetingStatus? Status,
     int Skip,
-    int Take);
+    int Take,
+    Guid? UserId = null,
+    IReadOnlyCollection<Guid>? VisibleCommitteeIds = null,
+    bool MaySeeAllMeetings = false);
 
 /// <summary>A searchable record within the current tenant and caller's visibility scope.</summary>
 public sealed record MeetingSearchDocument(

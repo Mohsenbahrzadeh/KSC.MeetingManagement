@@ -50,6 +50,8 @@ public sealed class MeetingsController(MeetingService meetings, MeetingSearchSer
     {
         ArgumentNullException.ThrowIfNull(request);
 
+        if (!await meetings.CanCreateAsync(request.CommitteeId, cancellationToken)) return Forbid();
+
         try
         {
             var result = await meetings.CreateAsync(
@@ -63,6 +65,10 @@ public sealed class MeetingsController(MeetingService meetings, MeetingSearchSer
         catch (MeetingDomainException ex)
         {
             return Problem(ex.Message, statusCode: StatusCodes.Status422UnprocessableEntity);
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return Forbid();
         }
         catch (MeetingTimeConflictException ex)
         {
@@ -78,10 +84,12 @@ public sealed class MeetingsController(MeetingService meetings, MeetingSearchSer
     [Audited("meeting.update", "meeting", "id")]
     [HttpPut("{id:guid}")]
     [HasPermission(Permissions.MeetingsEdit)]
-    public Task<IActionResult> Update(Guid id, UpdateMeetingRequest request, CancellationToken cancellationToken)
+    public async Task<IActionResult> Update(Guid id, UpdateMeetingRequest request, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(request);
-        return Mutate(() => meetings.UpdateAsync(
+        if (!await meetings.ExistsAsync(id, cancellationToken)) return NotFound();
+        if (!await meetings.CanManageAsync(id, cancellationToken)) return Forbid();
+        return await Mutate(() => meetings.UpdateAsync(
             id,
             new UpdateMeetingCommand(request.ExpectedVersion, request.Title, request.Description, request.Mode, request.Start, request.End, request.AllowConflicts, request.CommitteeId),
             cancellationToken));
@@ -90,30 +98,36 @@ public sealed class MeetingsController(MeetingService meetings, MeetingSearchSer
     [Audited("meeting.reschedule", "meeting", "id")]
     [HttpPost("{id:guid}/reschedule")]
     [HasPermission(Permissions.MeetingsEdit)]
-    public Task<IActionResult> Reschedule(Guid id, RescheduleMeetingRequest request, CancellationToken cancellationToken)
+    public async Task<IActionResult> Reschedule(Guid id, RescheduleMeetingRequest request, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(request);
-        return Mutate(() => meetings.RescheduleAsync(id, request.ExpectedVersion, request.Start, request.End, request.AllowConflicts, cancellationToken));
+        if (!await meetings.ExistsAsync(id, cancellationToken)) return NotFound();
+        if (!await meetings.CanManageAsync(id, cancellationToken)) return Forbid();
+        return await Mutate(() => meetings.RescheduleAsync(id, request.ExpectedVersion, request.Start, request.End, request.AllowConflicts, cancellationToken));
     }
 
     /// <summary>Marks the meeting as started now and records the actual start time.</summary>
     [HttpPost("{id:guid}/start")]
     [HasPermission(Permissions.MeetingsEdit)]
     [Audited("meeting.start", "meeting", "id")]
-    public Task<IActionResult> StartMeeting(Guid id, VersionRequest request, CancellationToken cancellationToken)
+    public async Task<IActionResult> StartMeeting(Guid id, VersionRequest request, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(request);
-        return Mutate(() => meetings.StartAsync(id, request.ExpectedVersion, cancellationToken));
+        if (!await meetings.ExistsAsync(id, cancellationToken)) return NotFound();
+        if (!await meetings.CanManageAsync(id, cancellationToken)) return Forbid();
+        return await Mutate(() => meetings.StartAsync(id, request.ExpectedVersion, cancellationToken));
     }
 
     /// <summary>Ends the meeting, records the actual end time, and closes the live room so nobody new can enter.</summary>
     [HttpPost("{id:guid}/end")]
     [HasPermission(Permissions.MeetingsEdit)]
     [Audited("meeting.end", "meeting", "id")]
-    public Task<IActionResult> EndMeeting(Guid id, VersionRequest request, CancellationToken cancellationToken)
+    public async Task<IActionResult> EndMeeting(Guid id, VersionRequest request, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(request);
-        return Mutate(async () =>
+        if (!await meetings.ExistsAsync(id, cancellationToken)) return NotFound();
+        if (!await meetings.CanManageAsync(id, cancellationToken)) return Forbid();
+        return await Mutate(async () =>
         {
             var ended = await meetings.EndAsync(id, request.ExpectedVersion, cancellationToken);
             if (ended is not null)
@@ -128,19 +142,23 @@ public sealed class MeetingsController(MeetingService meetings, MeetingSearchSer
     [Audited("meeting.cancel", "meeting", "id")]
     [HttpPost("{id:guid}/cancel")]
     [HasPermission(Permissions.MeetingsCancel)]
-    public Task<IActionResult> Cancel(Guid id, CancelMeetingRequest request, CancellationToken cancellationToken)
+    public async Task<IActionResult> Cancel(Guid id, CancelMeetingRequest request, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(request);
-        return Mutate(() => meetings.CancelAsync(id, request.ExpectedVersion, request.Reason, cancellationToken));
+        if (!await meetings.ExistsAsync(id, cancellationToken)) return NotFound();
+        if (!await meetings.CanManageAsync(id, cancellationToken)) return Forbid();
+        return await Mutate(() => meetings.CancelAsync(id, request.ExpectedVersion, request.Reason, cancellationToken));
     }
 
     [Audited("meeting.postpone", "meeting", "id")]
     [HttpPost("{id:guid}/postpone")]
     [HasPermission(Permissions.MeetingsEdit)]
-    public Task<IActionResult> Postpone(Guid id, PostponeMeetingRequest request, CancellationToken cancellationToken)
+    public async Task<IActionResult> Postpone(Guid id, PostponeMeetingRequest request, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(request);
-        return Mutate(() => meetings.PostponeAsync(id, request.ExpectedVersion, cancellationToken));
+        if (!await meetings.ExistsAsync(id, cancellationToken)) return NotFound();
+        if (!await meetings.CanManageAsync(id, cancellationToken)) return Forbid();
+        return await Mutate(() => meetings.PostponeAsync(id, request.ExpectedVersion, cancellationToken));
     }
 
     private async Task<IActionResult> Mutate(Func<Task<MeetingDto?>> action)
@@ -152,6 +170,10 @@ public sealed class MeetingsController(MeetingService meetings, MeetingSearchSer
         catch (MeetingDomainException ex)
         {
             return Problem(ex.Message, statusCode: StatusCodes.Status422UnprocessableEntity);
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return Forbid();
         }
         catch (MeetingConcurrencyException ex)
         {
@@ -191,11 +213,7 @@ public sealed class MeetingsController(MeetingService meetings, MeetingSearchSer
     {
         try
         {
-            var maySeeAll = (await HttpContext.RequestServices.GetRequiredService<Microsoft.AspNetCore.Authorization.IAuthorizationService>()
-                // Meeting organizers also hold MeetingsEdit; only tenant administrators/owners may bypass
-                // the per-meeting visibility filter.
-                .AuthorizeAsync(User, null, HasPermissionAttribute.PolicyPrefix + Permissions.OrganizationManage)).Succeeded;
-            return Ok(await search.SearchAsync(new MeetingSearchQuery(q, skip, take, maySeeAll), cancellationToken));
+            return Ok(await search.SearchAsync(new MeetingSearchQuery(q, skip, take), cancellationToken));
         }
         catch (ArgumentException ex)
         {

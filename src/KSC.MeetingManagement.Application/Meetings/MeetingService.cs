@@ -1,6 +1,7 @@
 using KSC.MeetingManagement.Application.Identity;
 using KSC.MeetingManagement.Application.Participants;
 using KSC.MeetingManagement.Application.Tenants;
+using KSC.MeetingManagement.Domain.Identity;
 using KSC.MeetingManagement.Domain.Meetings;
 
 namespace KSC.MeetingManagement.Application.Meetings;
@@ -9,6 +10,7 @@ public sealed class MeetingService(
     IMeetingRepository repository,
     IParticipantRepository participants,
     Committees.ICommitteeRepository committees,
+    IMembershipStore memberships,
     Notifications.NotificationService notifications,
     ITenantContext tenant,
     ICurrentUser user,
@@ -30,6 +32,7 @@ public sealed class MeetingService(
         if (command.Id is { } requested && requested != Guid.Empty
             && await repository.GetAsync(requested, cancellationToken) is { } existing)
         {
+            await EnsureCanManageMeetingAsync(existing, cancellationToken);
             return new CreateMeetingResult(MeetingDto.From(existing), Created: false);
         }
 
@@ -40,6 +43,7 @@ public sealed class MeetingService(
 
         var id = command.Id is { } given && given != Guid.Empty ? given : Guid.NewGuid();
         await EnsureCommitteeAsync(command.CommitteeId, cancellationToken);
+        await EnsureCanManageCommitteeAsync(command.CommitteeId, cancellationToken);
         var meeting = new Meeting(id, tenant.RequiredTenantId, command.Title, command.Mode, user.RequiredUserId);
         meeting.SetCommittee(command.CommitteeId);
         if (!string.IsNullOrWhiteSpace(command.Description))
@@ -70,7 +74,19 @@ public sealed class MeetingService(
             throw new MeetingDomainException("Both start and end are required together.");
         }
 
+        var current = await repository.GetAsync(id, cancellationToken);
+        if (current is null)
+        {
+            return null;
+        }
+
+        await EnsureCanManageMeetingAsync(current, cancellationToken);
         await EnsureCommitteeAsync(command.CommitteeId, cancellationToken);
+        if (command.CommitteeId != current.CommitteeId)
+        {
+            await EnsureCanManageCommitteeAsync(command.CommitteeId, cancellationToken);
+            await EnsureCanManageCommitteeAsync(current.CommitteeId, cancellationToken);
+        }
         return await MutateAsync(id, command.ExpectedVersion, meeting =>
         {
             meeting.UpdateDetails(command.Title, command.Description, command.Mode);
@@ -85,18 +101,26 @@ public sealed class MeetingService(
     /// <summary>Changes only the time (used by drag and drop). Conflicts are checked unless explicitly allowed.</summary>
     public Task<MeetingDto?> RescheduleAsync(
         Guid id, long expectedVersion, DateTimeOffset start, DateTimeOffset end, bool allowConflicts, CancellationToken cancellationToken) =>
-        MutateAsync(id, expectedVersion, m => m.Schedule(start, end), cancellationToken, allowConflicts ? null : EnsureNoConflictsForAttendeesAsync, NotifyChangedAsync);
+        RescheduleCoreAsync(id, expectedVersion, start, end, allowConflicts, cancellationToken);
+
+    private async Task<MeetingDto?> RescheduleCoreAsync(Guid id, long expectedVersion, DateTimeOffset start, DateTimeOffset end, bool allowConflicts, CancellationToken cancellationToken)
+    {
+        if (await repository.GetAsync(id, cancellationToken) is not { } meeting) return null;
+        await EnsureCanManageMeetingAsync(meeting, cancellationToken);
+        return await MutateAsync(id, expectedVersion, m => m.Schedule(start, end), cancellationToken,
+            allowConflicts ? null : EnsureNoConflictsForAttendeesAsync, NotifyChangedAsync);
+    }
 
     /// <summary>Marks the meeting as started now (Scheduled to InProgress) and records the actual start time.</summary>
     public Task<MeetingDto?> StartAsync(Guid id, long expectedVersion, CancellationToken cancellationToken) =>
-        MutateAsync(id, expectedVersion, m => m.Start(clock.GetUtcNow()), cancellationToken);
+        MutateIfManagerAsync(id, expectedVersion, m => m.Start(clock.GetUtcNow()), cancellationToken);
 
     /// <summary>
     /// Ends the meeting now and records the actual end time. A meeting that was never started is started first, so it can be closed
     /// in one step. After this the room no longer admits anyone.
     /// </summary>
     public Task<MeetingDto?> EndAsync(Guid id, long expectedVersion, CancellationToken cancellationToken) =>
-        MutateAsync(
+        MutateIfManagerAsync(
             id,
             expectedVersion,
             m =>
@@ -112,10 +136,22 @@ public sealed class MeetingService(
             cancellationToken);
 
     public Task<MeetingDto?> CancelAsync(Guid id, long expectedVersion, string reason, CancellationToken cancellationToken) =>
-        MutateAsync(id, expectedVersion, m => m.Cancel(reason), cancellationToken, afterChange: NotifyCancelledAsync);
+        MutateIfManagerAsync(id, expectedVersion, m => m.Cancel(reason), cancellationToken, afterChange: NotifyCancelledAsync);
 
     public Task<MeetingDto?> PostponeAsync(Guid id, long expectedVersion, CancellationToken cancellationToken) =>
-        MutateAsync(id, expectedVersion, m => m.Postpone(), cancellationToken, afterChange: NotifyChangedAsync);
+        MutateIfManagerAsync(id, expectedVersion, m => m.Postpone(), cancellationToken, afterChange: NotifyChangedAsync);
+
+    private async Task<MeetingDto?> MutateIfManagerAsync(
+        Guid id,
+        long expectedVersion,
+        Action<Meeting> change,
+        CancellationToken cancellationToken,
+        Func<Meeting, CancellationToken, Task>? afterChange = null)
+    {
+        if (await repository.GetAsync(id, cancellationToken) is not { } meeting) return null;
+        await EnsureCanManageMeetingAsync(meeting, cancellationToken);
+        return await MutateAsync(id, expectedVersion, change, cancellationToken, afterChange: afterChange);
+    }
 
     private async Task<MeetingDto?> MutateAsync(
         Guid id,
@@ -196,8 +232,78 @@ public sealed class MeetingService(
         }
     }
 
+    private async Task EnsureCanManageMeetingAsync(Meeting meeting, CancellationToken cancellationToken)
+    {
+        if (!await CanManageMeetingAsync(meeting, cancellationToken))
+            throw new UnauthorizedAccessException("Only the meeting organizer, the committee's chair/secretary, or an organization administrator may manage this meeting.");
+    }
+
+    private async Task<bool> CanManageMeetingAsync(Meeting meeting, CancellationToken cancellationToken)
+    {
+        var membership = await memberships.FindAsync(tenant.RequiredTenantId, user.RequiredUserId, cancellationToken);
+        if (IsTenantAdmin(membership)) return true;
+
+        if (meeting.CommitteeId is { } committeeId)
+        {
+            var committee = await committees.GetAsync(committeeId, cancellationToken);
+            return committee is { IsActive: true } && committee.Members.Any(member =>
+                member.UserId == user.RequiredUserId && member.Role is CommitteeRole.Chair or CommitteeRole.Secretary);
+        }
+
+        return meeting.OrganizerId == user.RequiredUserId && membership?.HasRole(Roles.MeetingOrganizer) == true;
+    }
+
+    private async Task EnsureCanManageCommitteeAsync(Guid? committeeId, CancellationToken cancellationToken)
+    {
+        var membership = await memberships.FindAsync(tenant.RequiredTenantId, user.RequiredUserId, cancellationToken);
+        if (IsTenantAdmin(membership)) return;
+        if (committeeId is null) return;
+        var committee = await committees.GetAsync(committeeId.Value, cancellationToken);
+        if (committee is null || !committee.IsActive || !committee.Members.Any(member =>
+                member.UserId == user.RequiredUserId && member.Role is CommitteeRole.Chair or CommitteeRole.Secretary))
+        {
+            throw new UnauthorizedAccessException("Only the organizer or the committee's chair/secretary may manage this meeting.");
+        }
+    }
+
     public async Task<MeetingDto?> GetAsync(Guid id, CancellationToken cancellationToken) =>
-        await repository.GetAsync(id, cancellationToken) is { } meeting ? MeetingDto.From(meeting) : null;
+        await repository.GetAsync(id, cancellationToken) is { } meeting && await CanViewMeetingAsync(meeting, cancellationToken)
+            ? MeetingDto.From(meeting)
+            : null;
+
+    public async Task<bool> CanManageAsync(Guid id, CancellationToken cancellationToken) =>
+        await repository.GetAsync(id, cancellationToken) is { } meeting
+        && await CanManageMeetingAsync(meeting, cancellationToken);
+
+    public Task<bool> ExistsAsync(Guid id, CancellationToken cancellationToken) =>
+        ExistsCoreAsync(id, cancellationToken);
+
+    private async Task<bool> ExistsCoreAsync(Guid id, CancellationToken cancellationToken) =>
+        await repository.GetAsync(id, cancellationToken) is not null;
+
+    public async Task<bool> IsOrganizerAsync(Guid id, CancellationToken cancellationToken) =>
+        await repository.GetAsync(id, cancellationToken) is { } meeting
+        && meeting.OrganizerId == user.RequiredUserId;
+
+    public async Task<bool> CanViewAsync(Guid id, CancellationToken cancellationToken) =>
+        await repository.GetAsync(id, cancellationToken) is { } meeting
+        && await CanViewMeetingAsync(meeting, cancellationToken);
+
+    public async Task<bool> CanCreateAsync(Guid? committeeId, CancellationToken cancellationToken)
+    {
+        var membership = await memberships.FindAsync(tenant.RequiredTenantId, user.RequiredUserId, cancellationToken);
+        if (IsTenantAdmin(membership))
+        {
+            if (committeeId is null) return true;
+            return await committees.GetAsync(committeeId.Value, cancellationToken) is { IsActive: true };
+        }
+        if (committeeId is null) return membership?.HasRole(Roles.MeetingOrganizer) == true
+            || membership?.HasRole(Roles.Secretary) == true;
+        var committee = await committees.GetAsync(committeeId.Value, cancellationToken);
+        if (committee is not { IsActive: true }) return true;
+        return committee.Members.Any(member =>
+            member.UserId == user.RequiredUserId && member.Role is CommitteeRole.Chair or CommitteeRole.Secretary);
+    }
 
     public async Task<IReadOnlyList<MeetingDto>> ListAsync(MeetingQuery query, CancellationToken cancellationToken)
     {
@@ -218,8 +324,44 @@ public sealed class MeetingService(
             Skip = Math.Max(0, query.Skip),
             Take = Math.Clamp(query.Take, 1, MaxPageSize),
         };
-        var meetings = await repository.ListAsync(bounded, cancellationToken);
+        var membership = await memberships.FindAsync(tenant.RequiredTenantId, user.RequiredUserId, cancellationToken);
+        var maySeeAll = membership is not null && (membership.HasRole(Roles.TenantOwner) || membership.HasRole(Roles.TenantAdministrator));
+        var visibleCommitteeIds = await GetVisibleCommitteeIdsAsync(cancellationToken);
+        var meetings = await repository.ListAsync(bounded with
+        {
+            UserId = user.RequiredUserId,
+            VisibleCommitteeIds = visibleCommitteeIds,
+            MaySeeAllMeetings = maySeeAll,
+        }, cancellationToken);
         return meetings.Select(MeetingDto.From).ToList();
+    }
+
+    private async Task<bool> CanViewMeetingAsync(Meeting meeting, CancellationToken cancellationToken)
+    {
+        var membership = await memberships.FindAsync(tenant.RequiredTenantId, user.RequiredUserId, cancellationToken);
+        if (IsTenantAdmin(membership) || meeting.OrganizerId == user.RequiredUserId) return true;
+        var invite = (await participants.ListAsync(meeting.Id, cancellationToken))
+            .Any(participant => participant.UserId == user.RequiredUserId
+                && participant.Status is InvitationStatus.Invited or InvitationStatus.Accepted);
+        if (invite) return true;
+        if (meeting.CommitteeId is { } committeeId)
+        {
+            var committee = await committees.GetAsync(committeeId, cancellationToken);
+            if (committee is { IsActive: true } && committee.Members.Any(member => member.UserId == user.RequiredUserId)) return true;
+        }
+
+        return false;
+    }
+
+    private static bool IsTenantAdmin(Membership? membership) =>
+        membership is not null && (membership.HasRole(Roles.TenantOwner) || membership.HasRole(Roles.TenantAdministrator));
+
+    private async Task<Guid[]> GetVisibleCommitteeIdsAsync(CancellationToken cancellationToken)
+    {
+        var all = await committees.ListAsync(cancellationToken);
+        return all.Where(committee => committee.IsActive && committee.Members.Any(member => member.UserId == user.RequiredUserId))
+            .Select(committee => committee.Id)
+            .ToArray();
     }
 
 }

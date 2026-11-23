@@ -63,9 +63,56 @@ public sealed class MediaOptions
     /// <summary>Absolute directory inside the Egress container where meeting recordings are written. Empty disables recording.</summary>
     public string? RecordingPath { get; set; }
 
+    /// <summary>Path to a locally installed Whisper GGML model. No model is downloaded automatically.</summary>
+    public string? TranscriptionModelPath { get; set; }
+
+    /// <summary>Recording directory as mounted inside the API container; defaults to RecordingPath.</summary>
+    public string? TranscriptionRecordingPath { get; set; }
+
+    /// <summary>Writable local directory for generated transcript files.</summary>
+    public string? TranscriptionOutputPath { get; set; }
+
+    /// <summary>Whisper language code; defaults to Persian.</summary>
+    public string TranscriptionLanguage { get; set; } = "fa";
+
+    /// <summary>FFmpeg executable used to decode the local Egress MP4 into 16 kHz mono WAV.</summary>
+    public string FfmpegPath { get; set; } = "ffmpeg";
+
+    /// <summary>How long to wait for Egress to finish writing a recording before reporting that it is unavailable.</summary>
+    public int TranscriptionFileWaitSeconds { get; set; } = 60;
+
     public bool IsComplete =>
         !string.IsNullOrWhiteSpace(ServerUrl) && !string.IsNullOrWhiteSpace(ApiKey)
         && ApiSecret is { Length: >= MinSecretLength };
 
     public bool RecordingConfigured => IsComplete && !string.IsNullOrWhiteSpace(RecordingPath);
+
+    public string? EffectiveTranscriptionRecordingPath =>
+        string.IsNullOrWhiteSpace(TranscriptionRecordingPath) ? RecordingPath : TranscriptionRecordingPath;
+
+    public string EffectiveTranscriptionOutputPath =>
+        string.IsNullOrWhiteSpace(TranscriptionOutputPath)
+            ? Path.Combine(AppContext.BaseDirectory, "App_Data", "transcripts")
+            : TranscriptionOutputPath;
+
+    public bool TranscriptionConfigured => RecordingConfigured
+        && !string.IsNullOrWhiteSpace(TranscriptionModelPath)
+        && !string.IsNullOrWhiteSpace(EffectiveTranscriptionRecordingPath);
+}
+
+public sealed class TranscriptionNotReadyException(string message) : Exception(message);
+
+public sealed record TranscriptSegment(TimeSpan Start, TimeSpan End, string Text);
+
+public sealed record MeetingTranscript(Guid MeetingId, string Language, DateTimeOffset GeneratedAtUtc,
+    IReadOnlyList<TranscriptSegment> Segments, string Text);
+
+/// <summary>Transcribes server-side recordings using locally installed software and models only.</summary>
+public interface IMeetingTranscriptionService
+{
+    bool IsConfigured { get; }
+
+    Task<MeetingTranscript> TranscribeAsync(string room, Guid meetingId, CancellationToken cancellationToken);
+
+    Task<MeetingTranscript?> GetLatestAsync(string room, Guid meetingId, CancellationToken cancellationToken);
 }

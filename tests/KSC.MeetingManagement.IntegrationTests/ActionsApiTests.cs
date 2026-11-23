@@ -102,15 +102,33 @@ public sealed class ActionsApiTests : IClassFixture<WebApplicationFactory<Progra
     private DateOnly Today => DateOnly.FromDateTime(_clock.Now.UtcDateTime);
 
     [Fact]
-    public async Task Manager_creates_an_action_with_owner_and_due_day_and_the_meeting_lists_it()
+    public async Task Manager_creates_an_action_with_owner_and_only_the_owner_or_manager_sees_it()
     {
         var meetingId = await CreateMeeting();
 
         var created = await Create(meetingId, Today.AddDays(7));
-        var list = (await (await Send(HttpMethod.Get, Url(meetingId), _tenantA, _otherMember)).Content.ReadFromJsonAsync<List<ActionItemDto>>(Json))!;
+        var ownerList = (await (await Send(HttpMethod.Get, Url(meetingId), _tenantA, _owner)).Content.ReadFromJsonAsync<List<ActionItemDto>>(Json))!;
+        var managerList = (await (await Send(HttpMethod.Get, Url(meetingId), _tenantA, _secretary)).Content.ReadFromJsonAsync<List<ActionItemDto>>(Json))!;
+        var unrelated = await Send(HttpMethod.Get, Url(meetingId), _tenantA, _otherMember);
 
         Assert.Equal((_owner, Today.AddDays(7), ActionItemStatus.Open, false), (created.OwnerUserId, created.DueDate, created.Status, created.IsOverdue));
-        Assert.Contains(list, a => a.Id == created.Id);
+        Assert.Contains(ownerList, a => a.Id == created.Id);
+        Assert.Contains(managerList, a => a.Id == created.Id);
+        Assert.Equal(HttpStatusCode.NotFound, unrelated.StatusCode);
+    }
+
+    [Fact]
+    public async Task Owner_sees_only_their_own_action_in_meeting_action_list()
+    {
+        var meetingId = await CreateMeeting();
+        var own = await Create(meetingId, Today.AddDays(3), owner: _owner);
+        await Create(meetingId, Today.AddDays(3), owner: _otherMember, title: "private-to-other-owner");
+
+        var list = (await (await Send(HttpMethod.Get, Url(meetingId), _tenantA, _owner)).Content.ReadFromJsonAsync<List<ActionItemDto>>(Json))!;
+        var mine = (await (await Send(HttpMethod.Get, "/api/v1/actions/mine", _tenantA, _owner)).Content.ReadFromJsonAsync<List<ActionItemDto>>(Json))!;
+
+        Assert.Equal([own.Id], list.Select(item => item.Id));
+        Assert.Equal([own.Id], mine.Select(item => item.Id));
     }
 
     [Fact]
@@ -118,7 +136,9 @@ public sealed class ActionsApiTests : IClassFixture<WebApplicationFactory<Progra
     {
         var meetingId = await CreateMeeting();
         var otherMeeting = await CreateMeeting();
-        var resolution = (await (await Send(HttpMethod.Post, $"/api/v1/meetings/{otherMeeting}/resolutions", _tenantA, _secretary, new { text = "x" }))
+        var resolutionResponse = await Send(HttpMethod.Post, $"/api/v1/meetings/{otherMeeting}/resolutions", _tenantA, _secretary, new { text = "x" });
+        Assert.Equal(HttpStatusCode.Created, resolutionResponse.StatusCode);
+        var resolution = (await resolutionResponse
             .Content.ReadFromJsonAsync<ResolutionDto>(Json))!;
 
         var past = await Send(HttpMethod.Post, Url(meetingId), _tenantA, _secretary, new { title = "x", ownerUserId = _owner, dueDate = Today.AddDays(-1) });
@@ -139,7 +159,9 @@ public sealed class ActionsApiTests : IClassFixture<WebApplicationFactory<Progra
     public async Task An_action_can_be_linked_to_a_resolution_of_the_same_meeting()
     {
         var meetingId = await CreateMeeting();
-        var resolution = (await (await Send(HttpMethod.Post, $"/api/v1/meetings/{meetingId}/resolutions", _tenantA, _secretary, new { text = "x" }))
+        var resolutionResponse = await Send(HttpMethod.Post, $"/api/v1/meetings/{meetingId}/resolutions", _tenantA, _secretary, new { text = "x" });
+        Assert.Equal(HttpStatusCode.Created, resolutionResponse.StatusCode);
+        var resolution = (await resolutionResponse
             .Content.ReadFromJsonAsync<ResolutionDto>(Json))!;
 
         var action = await Create(meetingId, Today.AddDays(3), resolutionId: resolution.Id);

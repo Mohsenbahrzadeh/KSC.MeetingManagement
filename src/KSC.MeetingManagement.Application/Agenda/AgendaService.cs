@@ -1,6 +1,7 @@
 using KSC.MeetingManagement.Application.Identity;
 using KSC.MeetingManagement.Application.Meetings;
 using KSC.MeetingManagement.Application.Tenants;
+using KSC.MeetingManagement.Domain.Identity;
 using KSC.MeetingManagement.Domain.Meetings;
 
 namespace KSC.MeetingManagement.Application.Agenda;
@@ -37,6 +38,8 @@ public sealed class AgendaService(
     IMeetingRepository meetings,
     IMembershipStore memberships,
     ITenantContext tenant,
+    ICurrentUser user,
+    Committees.ICommitteeRepository committees,
     Resolutions.IResolutionRepository resolutions)
 {
     public const int MaxItems = 100;
@@ -50,6 +53,26 @@ public sealed class AgendaService(
 
         return ToDto(meeting, await agenda.ListAsync(meetingId, cancellationToken));
     }
+
+    public async Task<bool> CanManageAsync(Guid meetingId, CancellationToken cancellationToken)
+    {
+        if (await meetings.GetAsync(meetingId, cancellationToken) is not { } meeting) return false;
+        var membership = await memberships.FindAsync(tenant.RequiredTenantId, user.RequiredUserId, cancellationToken);
+        if (membership is not { IsActive: true }) return false;
+        if (membership.HasRole(Roles.TenantOwner) || membership.HasRole(Roles.TenantAdministrator)) return true;
+        if (meeting.CommitteeId is { } committeeId)
+        {
+            var committee = await committees.GetAsync(committeeId, cancellationToken);
+            return committee is { IsActive: true } && committee.Members.Any(member =>
+                member.UserId == user.RequiredUserId && member.Role is CommitteeRole.Chair or CommitteeRole.Secretary);
+        }
+
+        return meeting.OrganizerId == user.RequiredUserId && membership.HasRole(Roles.MeetingOrganizer)
+            || membership.HasRole(Roles.Secretary);
+    }
+
+    public async Task<bool> MeetingExistsAsync(Guid meetingId, CancellationToken cancellationToken) =>
+        await meetings.GetAsync(meetingId, cancellationToken) is not null;
 
     /// <summary>Appends an item at the end of the agenda.</summary>
     public Task<AgendaDto?> AddAsync(Guid meetingId, long expectedRevision, AgendaItemInput input, CancellationToken cancellationToken)

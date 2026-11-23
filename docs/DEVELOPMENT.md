@@ -79,7 +79,7 @@ API روی `http://localhost:5227` در دسترس خواهد بود. در datab
 dotnet run --project src/KSC.MeetingManagement.Web --launch-profile http
 ```
 
-وب در `http://localhost:5268` باز می‌شود. launch profile مقدار `Api__BaseUrl` را به `http://localhost:5227/` تنظیم می‌کند تا با API هم‌خوان باشد. برای پورت/میزبان دیگر، همین متغیر را تغییر دهید.
+وب در `http://localhost:5272` باز می‌شود. launch profile مقدار `Api__BaseUrl` را به `http://localhost:5227/` تنظیم می‌کند تا با API هم‌خوان باشد. برای پورت/میزبان دیگر، همین متغیر را تغییر دهید.
 
 ### ورود HTTPS و دوربین
 
@@ -89,7 +89,7 @@ dotnet run --project src/KSC.MeetingManagement.Web --launch-profile http
 dotnet dev-certs https --trust
 ```
 
-در دو ترمینال دیگر همین دستورها را با profile HTTPS اجرا کنید:
+در دو ترمینال دیگر همین دستورها را با profile HTTPS اجرا کنید (پروفایل HTTPS نیز HTTP را روی پورت 5272 نگه می‌دارد):
 
 ```powershell
 dotnet run --project src/KSC.MeetingManagement.Api --launch-profile https

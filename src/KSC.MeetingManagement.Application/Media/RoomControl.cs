@@ -39,6 +39,8 @@ public interface IMediaRoomControl
 
     Task SetScreenSharePermissionAsync(string room, string identity, bool allowed, CancellationToken cancellationToken);
 
+    Task SetParticipantPublishSourcePermissionAsync(string room, string identity, string source, bool allowed, CancellationToken cancellationToken);
+
     Task<bool> SetRecordingAsync(string room, bool enabled, string? recordingPath, CancellationToken cancellationToken);
 }
 
@@ -53,6 +55,8 @@ public sealed class NoMediaRoomControl : IMediaRoomControl
 
     public Task SetScreenSharePermissionAsync(string room, string identity, bool allowed, CancellationToken cancellationToken) => Task.CompletedTask;
 
+    public Task SetParticipantPublishSourcePermissionAsync(string room, string identity, string source, bool allowed, CancellationToken cancellationToken) => Task.CompletedTask;
+
     public Task<bool> SetRecordingAsync(string room, bool enabled, string? recordingPath, CancellationToken cancellationToken) => Task.FromResult(false);
 }
 
@@ -65,6 +69,7 @@ public sealed partial class RoomControlService(
     ITenantContext tenant,
     ICurrentUser user,
     MediaOptions mediaOptions,
+    IMeetingTranscriptionService transcription,
     TimeProvider clock)
 {
     [GeneratedRegex("^[ug]-[0-9a-f]{32}$", RegexOptions.CultureInvariant)]
@@ -137,19 +142,25 @@ public sealed partial class RoomControlService(
         }
     }
 
-    /// <summary>Mutes the published microphones of everyone else in the current meeting. Participants can unmute themselves afterwards.</summary>
+    /// <summary>Only the organizer of this meeting may mute every other participant.</summary>
     public async Task<bool> MuteAllAsync(Guid meetingId, CancellationToken cancellationToken)
     {
-        if (await meetings.GetAsync(meetingId, cancellationToken) is null)
+        if (await meetings.GetAsync(meetingId, cancellationToken) is not { } meeting)
         {
             return false;
         }
 
+        if (meeting.OrganizerId != user.RequiredUserId)
+        {
+            throw new UnauthorizedAccessException("Only the meeting organizer may mute all participants.");
+        }
+
+        var exceptIdentity = $"u-{meeting.OrganizerId:N}";
         try
         {
             await room.MuteAllParticipantsAsync(
                 MediaAccessService.RoomName(tenant.RequiredTenantId, meetingId),
-                $"u-{user.RequiredUserId:N}",
+                exceptIdentity,
                 cancellationToken);
             return true;
         }
@@ -180,13 +191,42 @@ public sealed partial class RoomControlService(
             return false;
         }
 
-        await room.SetScreenSharePermissionAsync(
-            MediaAccessService.RoomName(tenant.RequiredTenantId, meetingId), identity, allowed, cancellationToken);
+        await room.SetParticipantPublishSourcePermissionAsync(
+            MediaAccessService.RoomName(tenant.RequiredTenantId, meetingId), identity, "SCREEN_SHARE", allowed, cancellationToken);
+        return true;
+    }
+
+    public async Task<bool> SetMicrophonePermissionAsync(Guid meetingId, string identity, bool allowed, CancellationToken cancellationToken)
+    {
+        if (!IsValidIdentity(identity) || await meetings.GetAsync(meetingId, cancellationToken) is not { } meeting)
+        {
+            return false;
+        }
+
+        if (meeting.OrganizerId != user.RequiredUserId)
+        {
+            throw new UnauthorizedAccessException("Only the meeting organizer may manage microphone permissions.");
+        }
+
+        if (identity == $"u-{meeting.OrganizerId:N}"
+            || await entries.FindAsync(meetingId, identity, cancellationToken) is { Status: RoomEntryStatus.Removed }
+            || !await IsInvitedIdentityAsync(meetingId, identity, cancellationToken))
+        {
+            return false;
+        }
+
+        await room.SetParticipantPublishSourcePermissionAsync(
+            MediaAccessService.RoomName(tenant.RequiredTenantId, meetingId), identity, "MICROPHONE", allowed, cancellationToken);
         return true;
     }
 
     public async Task<bool> SetRecordingAsync(Guid meetingId, bool enabled, CancellationToken cancellationToken)
     {
+        if (enabled && !mediaOptions.RecordingConfigured)
+        {
+            throw new InvalidOperationException("Recording is not configured: media credentials and recording path are required.");
+        }
+
         if (await meetings.GetAsync(meetingId, cancellationToken) is not { } meeting)
         {
             return false;
@@ -197,14 +237,29 @@ public sealed partial class RoomControlService(
             throw new UnauthorizedAccessException("Only the meeting organizer may control recording.");
         }
 
-        if (enabled && !mediaOptions.RecordingConfigured)
-        {
-            throw new InvalidOperationException("Server recording is not configured.");
-        }
-
         return await room.SetRecordingAsync(
             MediaAccessService.RoomName(tenant.RequiredTenantId, meetingId), enabled,
             mediaOptions.RecordingPath, cancellationToken);
+    }
+
+    public async Task<MeetingTranscript?> GetTranscriptAsync(Guid meetingId, CancellationToken cancellationToken)
+    {
+        if (await meetings.GetAsync(meetingId, cancellationToken) is not { } meeting) return null;
+        if (meeting.OrganizerId != user.RequiredUserId)
+            throw new UnauthorizedAccessException("Only the meeting organizer may access the transcript.");
+        return await transcription.GetLatestAsync(
+            MediaAccessService.RoomName(tenant.RequiredTenantId, meetingId), meetingId, cancellationToken);
+    }
+
+    public async Task<MeetingTranscript?> TranscribeAsync(Guid meetingId, CancellationToken cancellationToken)
+    {
+        if (await meetings.GetAsync(meetingId, cancellationToken) is not { } meeting) return null;
+        if (meeting.OrganizerId != user.RequiredUserId)
+            throw new UnauthorizedAccessException("Only the meeting organizer may transcribe the recording.");
+        if (!mediaOptions.TranscriptionConfigured || !transcription.IsConfigured)
+            throw new InvalidOperationException("Local transcription is not configured.");
+        return await transcription.TranscribeAsync(
+            MediaAccessService.RoomName(tenant.RequiredTenantId, meetingId), meetingId, cancellationToken);
     }
 
     private async Task<bool> IsInvitedIdentityAsync(Guid meetingId, string identity, CancellationToken cancellationToken)

@@ -19,6 +19,18 @@ public sealed class EfMeetingRepository(KscDbContext db) : IMeetingRepository
 
         IQueryable<Meeting> q = db.Meetings.AsNoTracking();
 
+        if (!query.MaySeeAllMeetings && query.UserId is { } userId)
+        {
+            var visibleCommitteeIds = query.VisibleCommitteeIds?.Distinct().ToArray() ?? [];
+            var participantMeetingIds = db.Participants.AsNoTracking()
+                .Where(participant => participant.UserId == userId
+                    && (participant.Status == InvitationStatus.Invited || participant.Status == InvitationStatus.Accepted))
+                .Select(participant => participant.MeetingId);
+            q = q.Where(meeting => meeting.OrganizerId == userId
+                || participantMeetingIds.Contains(meeting.Id)
+                || (meeting.CommitteeId != null && visibleCommitteeIds.Contains(meeting.CommitteeId.Value)));
+        }
+
         if (query.Status is { } status)
         {
             q = q.Where(m => m.Status == status);
