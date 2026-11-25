@@ -21,14 +21,14 @@ public sealed class CommitteesApiClient(IHttpClientFactory httpClientFactory)
     public Task<ApiResult<CommitteeDto>> GetAsync(Guid id, CancellationToken cancellationToken) =>
         SendAsync<CommitteeDto>(c => c.GetAsync(new Uri($"api/v1/committees/{id}", UriKind.Relative), cancellationToken), cancellationToken);
 
-    public Task<ApiResult<CommitteeDto>> CreateAsync(string name, string? description, CancellationToken cancellationToken) =>
+    public Task<ApiResult<CommitteeDto>> CreateAsync(string name, string? description, IReadOnlyCollection<Guid> memberUserIds, IReadOnlyCollection<Guid> secretaryUserIds, CancellationToken cancellationToken) =>
         SendAsync<CommitteeDto>(
-            c => c.PostAsJsonAsync(new Uri("api/v1/committees", UriKind.Relative), new { name, description }, Json, cancellationToken),
+            c => c.PostAsJsonAsync(new Uri("api/v1/committees", UriKind.Relative), new { name, description, memberUserIds, secretaryUserIds }, Json, cancellationToken),
             cancellationToken);
 
-    public Task<ApiResult<CommitteeDto>> UpdateAsync(Guid id, string name, string? description, bool isActive, CancellationToken cancellationToken) =>
+    public Task<ApiResult<CommitteeDto>> UpdateAsync(Guid id, string name, string? description, bool isActive, IReadOnlyCollection<Guid> memberUserIds, IReadOnlyCollection<Guid> secretaryUserIds, CancellationToken cancellationToken) =>
         SendAsync<CommitteeDto>(
-            c => c.PutAsJsonAsync(new Uri($"api/v1/committees/{id}", UriKind.Relative), new { name, description, isActive }, Json, cancellationToken),
+            c => c.PutAsJsonAsync(new Uri($"api/v1/committees/{id}", UriKind.Relative), new { name, description, isActive, memberUserIds, secretaryUserIds }, Json, cancellationToken),
             cancellationToken);
 
     private async Task<ApiResult<T>> SendAsync<T>(Func<HttpClient, Task<HttpResponseMessage>> send, CancellationToken cancellationToken)

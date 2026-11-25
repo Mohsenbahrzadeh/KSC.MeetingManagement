@@ -1,8 +1,11 @@
 @using KSC.MeetingManagement.Application.Committees
 @using KSC.MeetingManagement.Domain.Meetings
+@using KSC.MeetingManagement.Application.Identity
+@using KSC.MeetingManagement.Calendar
 @using KSC.MeetingManagement.Web.Services
 @implements IDisposable
 @inject CommitteesApiClient Api
+@inject UsersApiClient UsersApi
 @inject ISnackbar Snackbar
 
 <MudDialog>
@@ -12,6 +15,47 @@
                           Error="@(_nameError is not null)" ErrorText="@_nameError" Disabled="_saving" />
             <div class="ksc-form-span-2">
                 <KscRichTextEditor @bind-Value="_description" Label="توضیحات کمیته" MaxLength="KSC.MeetingManagement.Domain.Meetings.Committee.MaxDescriptionLength" Disabled="_saving" />
+            </div>
+            <div class="ksc-form-span-2">
+                <MudSelect T="Guid" Label="اعضای کمیته" MultiSelection="true" SelectedValues="_memberUserIds"
+                           SelectedValuesChanged="MemberSelectionChanged" MultiSelectionTextFunc="FormatMemberSelection"
+                           HelperText="اعضای کمیته را از کاربران فعال سازمان انتخاب کنید." Disabled="@(_saving || _usersLoading || _users.Count == 0)">
+                    @foreach (var member in _users)
+                    {
+                        <MudSelectItem T="Guid" Value="@member.UserId">@member.DisplayName — @member.Email</MudSelectItem>
+                    }
+                </MudSelect>
+            </div>
+            <div class="ksc-form-span-2">
+                <MudSelect T="Guid" Label="دبیران کمیته" MultiSelection="true" SelectedValues="_secretaryUserIds"
+                           SelectedValuesChanged="SecretarySelectionChanged" MultiSelectionTextFunc="FormatSecretarySelection"
+                           HelperText="دبیران باید از اعضای انتخاب‌شده باشند؛ فقط آن‌ها می‌توانند جلسهٔ کمیته را ایجاد کنند."
+                           Disabled="@(_saving || _usersLoading || _memberUserIds.Count == 0)">
+                    @foreach (var member in _users.Where(m => _memberUserIds.Contains(m.UserId)))
+                    {
+                        <MudSelectItem T="Guid" Value="@member.UserId">@member.DisplayName — @member.Email</MudSelectItem>
+                    }
+                </MudSelect>
+                @if (_usersLoading)
+                {
+                    <MudProgressLinear Class="mt-2" Indeterminate="true" />
+                }
+                else if (_users.Count == 0)
+                {
+                    <MudText Color="Color.Error" Typo="Typo.caption" role="alert">برای تعیین اعضا، ابتدا باید یک کاربر فعال به سازمان اضافه شود.</MudText>
+                }
+                @if (_memberError is not null)
+                {
+                    <MudText Color="Color.Error" Typo="Typo.caption" role="alert">@_memberError</MudText>
+                }
+                @if (_inactiveSecretaryCount > 0)
+                {
+                    <MudText Color="Color.Warning" Typo="Typo.caption">@PersianText.Digits(_inactiveSecretaryCount) دبیر قبلی غیرفعال است؛ دبیر فعال جایگزین کنید.</MudText>
+                }
+                @if (_secretaryError is not null)
+                {
+                    <MudText Color="Color.Error" Typo="Typo.caption" role="alert">@_secretaryError</MudText>
+                }
             </div>
             @if (Committee is not null)
             {
@@ -36,28 +80,56 @@
     private bool _isActive = true;
     private string? _nameError;
     private string? _serverError;
+    private string? _secretaryError;
+    private string? _memberError;
     private bool _saving;
+    private bool _usersLoading = true;
+    private int _inactiveSecretaryCount;
+    private List<MemberDto> _users = [];
+    private HashSet<Guid> _secretaryUserIds = [];
+    private HashSet<Guid> _memberUserIds = [];
 
     [CascadingParameter] private IMudDialogInstance Dialog { get; set; } = default!;
 
     /// <summary>When set, the dialog edits this committee; otherwise it creates a new one.</summary>
     [Parameter] public CommitteeDto? Committee { get; set; }
 
-    protected override void OnInitialized()
+    protected override async Task OnInitializedAsync()
     {
         if (Committee is { } c)
         {
             _name = c.Name;
             _description = c.Description;
             _isActive = c.IsActive;
+            _memberUserIds = c.Members.Select(m => m.UserId).ToHashSet();
+            _secretaryUserIds = c.Members.Where(m => m.Role == CommitteeRole.Secretary).Select(m => m.UserId).ToHashSet();
         }
+
+        var result = await UsersApi.ListAsync(_cts.Token);
+        if (result.Succeeded && result.Value is not null)
+        {
+            _users = result.Value.Where(m => m.MembershipActive && m.UserActive).ToList();
+            var activeIds = _users.Select(m => m.UserId).ToHashSet();
+            _inactiveSecretaryCount = _secretaryUserIds.Count(id => !activeIds.Contains(id));
+            _memberUserIds.IntersectWith(activeIds);
+            _secretaryUserIds.IntersectWith(activeIds);
+            _secretaryUserIds.IntersectWith(_memberUserIds);
+        }
+        else
+        {
+            _serverError = result.Message ?? "بارگیری اعضای فعال سازمان ناموفق بود.";
+        }
+
+        _usersLoading = false;
     }
 
     private async Task SaveAsync()
     {
         _serverError = null;
         _nameError = string.IsNullOrWhiteSpace(_name) ? "نام کمیته را وارد کنید." : null;
-        if (_nameError is not null)
+        _memberError = _memberUserIds.Count == 0 ? "حداقل یک عضو برای کمیته انتخاب کنید." : null;
+        _secretaryError = _secretaryUserIds.Count == 0 ? "حداقل یک دبیر فعال برای کمیته انتخاب کنید." : null;
+        if (_nameError is not null || _memberError is not null || _secretaryError is not null || _usersLoading || _users.Count == 0)
         {
             return;
         }
@@ -68,8 +140,8 @@
             var name = _name.Trim();
             var description = string.IsNullOrWhiteSpace(_description) ? null : _description.Trim();
             var result = Committee is { } c
-                ? await Api.UpdateAsync(c.Id, name, description, _isActive, _cts.Token)
-                : await Api.CreateAsync(name, description, _cts.Token);
+                ? await Api.UpdateAsync(c.Id, name, description, _isActive, _memberUserIds, _secretaryUserIds, _cts.Token)
+                : await Api.CreateAsync(name, description, _memberUserIds, _secretaryUserIds, _cts.Token);
 
             if (result.Succeeded && result.Value is { } saved)
             {
@@ -87,6 +159,27 @@
     }
 
     private void Cancel() => Dialog.Cancel();
+
+    private Task SecretarySelectionChanged(IEnumerable<Guid> values)
+    {
+        _secretaryUserIds = values.ToHashSet();
+        return Task.CompletedTask;
+    }
+
+    private Task MemberSelectionChanged(IEnumerable<Guid> values)
+    {
+        _memberUserIds = values.ToHashSet();
+        _secretaryUserIds.IntersectWith(_memberUserIds);
+        return Task.CompletedTask;
+    }
+
+    private string FormatMemberSelection(IReadOnlyList<string> selected) => selected.Count == 0
+        ? "عضوی انتخاب نشده"
+        : $"{PersianText.Digits(selected.Count)} عضو انتخاب شد";
+
+    private string FormatSecretarySelection(IReadOnlyList<string> selected) => selected.Count == 0
+        ? "دبیری انتخاب نشده"
+        : $"{PersianText.Digits(selected.Count)} دبیر انتخاب شد";
 
     public void Dispose()
     {
