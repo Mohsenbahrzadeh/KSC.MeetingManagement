@@ -8,9 +8,9 @@ using Microsoft.AspNetCore.Mvc;
 
 namespace KSC.MeetingManagement.Api.Controllers;
 
-public sealed record CreateCommitteeRequest(string Name, string? Description);
+public sealed record CreateCommitteeRequest(string Name, string? Description, IReadOnlyCollection<Guid>? MemberUserIds = null, IReadOnlyCollection<Guid>? SecretaryUserIds = null);
 
-public sealed record UpdateCommitteeRequest(string Name, string? Description, bool IsActive);
+public sealed record UpdateCommitteeRequest(string Name, string? Description, bool IsActive, IReadOnlyCollection<Guid>? MemberUserIds = null, IReadOnlyCollection<Guid>? SecretaryUserIds = null);
 
 public sealed record AddCommitteeMemberRequest(Guid UserId, CommitteeRole Role);
 
@@ -39,7 +39,7 @@ public sealed class CommitteesController(CommitteeService committees) : Controll
         ArgumentNullException.ThrowIfNull(request);
         try
         {
-            var dto = await committees.CreateAsync(request.Name, request.Description, cancellationToken);
+            var dto = await committees.CreateAsync(request.Name, request.Description, request.MemberUserIds, request.SecretaryUserIds, cancellationToken);
             return CreatedAtAction(nameof(Get), new { id = dto.Id }, dto);
         }
         catch (MeetingDomainException ex)
@@ -54,7 +54,7 @@ public sealed class CommitteesController(CommitteeService committees) : Controll
     public Task<IActionResult> Update(Guid id, UpdateCommitteeRequest request, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(request);
-        return Run(() => committees.UpdateAsync(id, request.Name, request.Description, request.IsActive, cancellationToken));
+        return Run(() => committees.UpdateAsync(id, request.Name, request.Description, request.IsActive, request.MemberUserIds, request.SecretaryUserIds, cancellationToken));
     }
 
     [Audited("committee.add-member", "committee", "id")]

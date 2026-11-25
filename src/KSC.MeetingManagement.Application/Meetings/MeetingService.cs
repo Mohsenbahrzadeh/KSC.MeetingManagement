@@ -43,7 +43,7 @@ public sealed class MeetingService(
 
         var id = command.Id is { } given && given != Guid.Empty ? given : Guid.NewGuid();
         await EnsureCommitteeAsync(command.CommitteeId, cancellationToken);
-        await EnsureCanManageCommitteeAsync(command.CommitteeId, cancellationToken);
+        await EnsureCanCreateCommitteeMeetingAsync(command.CommitteeId, cancellationToken);
         var meeting = new Meeting(id, tenant.RequiredTenantId, command.Title, command.Mode, user.RequiredUserId);
         meeting.SetCommittee(command.CommitteeId);
         if (!string.IsNullOrWhiteSpace(command.Description))
@@ -262,7 +262,20 @@ public sealed class MeetingService(
         if (committee is null || !committee.IsActive || !committee.Members.Any(member =>
                 member.UserId == user.RequiredUserId && member.Role is CommitteeRole.Chair or CommitteeRole.Secretary))
         {
-            throw new UnauthorizedAccessException("Only the organizer or the committee's chair/secretary may manage this meeting.");
+            throw new UnauthorizedAccessException("Only the committee's chair/secretary or an organization administrator may manage this meeting.");
+        }
+    }
+
+    private async Task EnsureCanCreateCommitteeMeetingAsync(Guid? committeeId, CancellationToken cancellationToken)
+    {
+        var membership = await memberships.FindAsync(tenant.RequiredTenantId, user.RequiredUserId, cancellationToken);
+        if (IsTenantAdmin(membership) || committeeId is null) return;
+
+        var committee = await committees.GetAsync(committeeId.Value, cancellationToken);
+        if (committee is null || !committee.IsActive || !committee.Members.Any(member =>
+                member.UserId == user.RequiredUserId && member.Role == CommitteeRole.Secretary))
+        {
+            throw new UnauthorizedAccessException("Only an assigned committee secretary or an organization administrator may create this meeting.");
         }
     }
 
@@ -300,9 +313,9 @@ public sealed class MeetingService(
         if (committeeId is null) return membership?.HasRole(Roles.MeetingOrganizer) == true
             || membership?.HasRole(Roles.Secretary) == true;
         var committee = await committees.GetAsync(committeeId.Value, cancellationToken);
-        if (committee is not { IsActive: true }) return true;
+        if (committee is not { IsActive: true }) return false;
         return committee.Members.Any(member =>
-            member.UserId == user.RequiredUserId && member.Role is CommitteeRole.Chair or CommitteeRole.Secretary);
+            member.UserId == user.RequiredUserId && member.Role == CommitteeRole.Secretary);
     }
 
     public async Task<IReadOnlyList<MeetingDto>> ListAsync(MeetingQuery query, CancellationToken cancellationToken)

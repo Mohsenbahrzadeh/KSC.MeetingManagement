@@ -67,7 +67,8 @@ public sealed class CommitteesApiTests : IClassFixture<WebApplicationFactory<Pro
 
     private async Task<CommitteeDto> CreateCommittee()
     {
-        var response = await Send(HttpMethod.Post, "/api/v1/committees", _tenantA, _adminA, new { name = "Audit", description = "d" });
+        var response = await Send(HttpMethod.Post, "/api/v1/committees", _tenantA, _adminA,
+            new { name = "Audit", description = "d", memberUserIds = new[] { _member2A }, secretaryUserIds = new[] { _member2A } });
         Assert.Equal(HttpStatusCode.Created, response.StatusCode);
         return (await response.Content.ReadFromJsonAsync<CommitteeDto>(Json))!;
     }
@@ -77,7 +78,8 @@ public sealed class CommitteesApiTests : IClassFixture<WebApplicationFactory<Pro
     {
         var c = await CreateCommittee();
 
-        var update = await Send(HttpMethod.Put, $"/api/v1/committees/{c.Id}", _tenantA, _adminA, new { name = "Audit 2", isActive = false });
+        var update = await Send(HttpMethod.Put, $"/api/v1/committees/{c.Id}", _tenantA, _adminA,
+            new { name = "Audit 2", isActive = false, memberUserIds = new[] { _memberA }, secretaryUserIds = new[] { _memberA } });
         var read = await Send(HttpMethod.Get, $"/api/v1/committees/{c.Id}", _tenantA, _memberA);
         var dto = await read.Content.ReadFromJsonAsync<CommitteeDto>(Json);
 
@@ -126,7 +128,7 @@ public sealed class CommitteesApiTests : IClassFixture<WebApplicationFactory<Pro
         var remove = await Send(HttpMethod.Delete, $"/api/v1/committees/{c.Id}/members/{_memberA}", _tenantA, _adminA);
         var removeAgain = await Send(HttpMethod.Delete, $"/api/v1/committees/{c.Id}/members/{_memberA}", _tenantA, _adminA);
 
-        Assert.Equal("Secretary", changed!.Members.Single().Role.ToString());
+        Assert.Equal("Secretary", changed!.Members.Single(m => m.UserId == _memberA).Role.ToString());
         Assert.Equal(HttpStatusCode.OK, remove.StatusCode);
         Assert.Equal(HttpStatusCode.NotFound, removeAgain.StatusCode);
     }
@@ -137,7 +139,8 @@ public sealed class CommitteesApiTests : IClassFixture<WebApplicationFactory<Pro
         var c = await CreateCommittee();
 
         var read = await Send(HttpMethod.Get, $"/api/v1/committees/{c.Id}", _tenantB, _adminB);
-        var update = await Send(HttpMethod.Put, $"/api/v1/committees/{c.Id}", _tenantB, _adminB, new { name = "Hijack", isActive = true });
+        var update = await Send(HttpMethod.Put, $"/api/v1/committees/{c.Id}", _tenantB, _adminB,
+            new { name = "Hijack", isActive = true, memberUserIds = new[] { _memberA }, secretaryUserIds = new[] { _memberA } });
         var list = await (await Send(HttpMethod.Get, "/api/v1/committees", _tenantB, _adminB)).Content.ReadFromJsonAsync<List<CommitteeDto>>(Json);
 
         Assert.Equal(HttpStatusCode.NotFound, read.StatusCode);
@@ -151,5 +154,20 @@ public sealed class CommitteesApiTests : IClassFixture<WebApplicationFactory<Pro
         var response = await Send(HttpMethod.Post, "/api/v1/committees", _tenantA, _adminA, new { name = " " });
 
         Assert.Equal(HttpStatusCode.UnprocessableEntity, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task Committee_requires_at_least_one_active_secretary()
+    {
+        var noSecretary = await Send(HttpMethod.Post, "/api/v1/committees", _tenantA, _adminA, new { name = "No secretary" });
+        var inactiveSecretary = await Send(HttpMethod.Post, "/api/v1/committees", _tenantA, _adminA,
+            new { name = "Inactive", memberUserIds = new[] { _outsider }, secretaryUserIds = new[] { _outsider } });
+
+        Assert.Equal(HttpStatusCode.UnprocessableEntity, noSecretary.StatusCode);
+        Assert.Equal(HttpStatusCode.UnprocessableEntity, inactiveSecretary.StatusCode);
+
+        var secretaryNotMember = await Send(HttpMethod.Post, "/api/v1/committees", _tenantA, _adminA,
+            new { name = "Mismatched", memberUserIds = new[] { _memberA }, secretaryUserIds = new[] { _member2A } });
+        Assert.Equal(HttpStatusCode.UnprocessableEntity, secretaryNotMember.StatusCode);
     }
 }

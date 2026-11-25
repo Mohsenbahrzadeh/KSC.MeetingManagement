@@ -31,16 +31,57 @@ public interface ICommitteeRepository
 
 public sealed class CommitteeService(ICommitteeRepository repository, IMembershipStore memberships, ITenantContext tenant)
 {
-    public async Task<CommitteeDto> CreateAsync(string name, string? description, CancellationToken cancellationToken)
+    public async Task<CommitteeDto> CreateAsync(string name, string? description, IReadOnlyCollection<Guid>? memberUserIds, IReadOnlyCollection<Guid>? secretaryUserIds, CancellationToken cancellationToken)
     {
+        var members = await ValidateMembersAsync(memberUserIds, cancellationToken);
+        var secretaries = await ValidateSecretariesAsync(secretaryUserIds, cancellationToken);
+        if (secretaries.Count == 0 || !secretaries.IsSubsetOf(members))
+        {
+            throw new MeetingDomainException("Select at least one secretary, and make sure every secretary is also a committee member.");
+        }
+
         var committee = new Committee(Guid.NewGuid(), tenant.RequiredTenantId, name, description);
+        foreach (var userId in members)
+        {
+            committee.AddMember(userId, secretaries.Contains(userId) ? CommitteeRole.Secretary : CommitteeRole.Member);
+        }
+
         await repository.AddAsync(committee, cancellationToken);
         await repository.SaveChangesAsync(cancellationToken);
         return CommitteeDto.From(committee);
     }
 
-    public Task<CommitteeDto?> UpdateAsync(Guid id, string name, string? description, bool isActive, CancellationToken cancellationToken) =>
-        ChangeAsync(id, c => c.Update(name, description, isActive), cancellationToken);
+    public async Task<CommitteeDto?> UpdateAsync(Guid id, string name, string? description, bool isActive, IReadOnlyCollection<Guid>? memberUserIds, IReadOnlyCollection<Guid>? secretaryUserIds, CancellationToken cancellationToken)
+    {
+        if (await repository.GetAsync(id, cancellationToken) is not { } committee)
+        {
+            return null;
+        }
+
+        var members = await ValidateMembersAsync(memberUserIds, cancellationToken);
+        var secretaries = await ValidateSecretariesAsync(secretaryUserIds, cancellationToken);
+        if (secretaries.Count == 0 || !secretaries.IsSubsetOf(members))
+        {
+            throw new MeetingDomainException("Select at least one secretary, and make sure every secretary is also a committee member.");
+        }
+
+        committee.Update(name, description, isActive);
+        foreach (var existing in committee.Members.Where(m => !members.Contains(m.UserId)).ToList())
+        {
+            committee.RemoveMember(existing.UserId);
+        }
+
+        foreach (var userId in members)
+        {
+            var existing = committee.Members.FirstOrDefault(m => m.UserId == userId);
+            var desiredRole = secretaries.Contains(userId) ? CommitteeRole.Secretary : CommitteeRole.Member;
+            if (existing is null) committee.AddMember(userId, desiredRole);
+            else if (existing.Role != CommitteeRole.Chair) committee.ChangeRole(userId, desiredRole);
+        }
+
+        await repository.SaveChangesAsync(cancellationToken);
+        return CommitteeDto.From(committee);
+    }
 
     public async Task<CommitteeDto?> GetAsync(Guid id, CancellationToken cancellationToken) =>
         await repository.GetAsync(id, cancellationToken) is { } c ? CommitteeDto.From(c) : null;
@@ -75,6 +116,36 @@ public sealed class CommitteeService(ICommitteeRepository repository, IMembershi
                 throw new KeyNotFoundException("Committee member not found.");
             }
         }, cancellationToken);
+
+    private static Task<HashSet<Guid>> ValidateSecretariesAsync(IReadOnlyCollection<Guid>? secretaryUserIds, CancellationToken cancellationToken)
+    {
+        var secretaries = secretaryUserIds?.ToHashSet() ?? [];
+        if (secretaries.Contains(Guid.Empty))
+        {
+            throw new MeetingDomainException("Secretary user ids are required.");
+        }
+
+        return Task.FromResult(secretaries);
+    }
+
+    private async Task<HashSet<Guid>> ValidateMembersAsync(IReadOnlyCollection<Guid>? memberUserIds, CancellationToken cancellationToken)
+    {
+        var members = memberUserIds?.ToHashSet() ?? [];
+        if (members.Contains(Guid.Empty))
+        {
+            throw new MeetingDomainException("Committee member user ids are required.");
+        }
+
+        foreach (var userId in members)
+        {
+            if (await memberships.FindAsync(tenant.RequiredTenantId, userId, cancellationToken) is not { IsActive: true })
+            {
+                throw new MeetingDomainException("Every committee member must be an active member of this organisation.");
+            }
+        }
+
+        return members;
+    }
 
     private async Task<CommitteeDto?> ChangeAsync(Guid id, Action<Committee> change, CancellationToken cancellationToken)
     {

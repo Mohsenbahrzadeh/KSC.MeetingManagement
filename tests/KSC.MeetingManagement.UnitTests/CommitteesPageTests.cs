@@ -4,6 +4,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using Bunit;
 using KSC.MeetingManagement.Application.Committees;
+using KSC.MeetingManagement.Application.Identity;
 using KSC.MeetingManagement.Web.Components.Committees;
 using KSC.MeetingManagement.Web.Components.Pages;
 using KSC.MeetingManagement.Web.Services;
@@ -19,6 +20,8 @@ public sealed class CommitteesPageTests : BunitContext, IAsyncLifetime
 
     private readonly List<(HttpMethod Method, string Path, string Body)> _requests = [];
     private Func<HttpRequestMessage, HttpResponseMessage> _respond = _ => new HttpResponseMessage(HttpStatusCode.InternalServerError);
+    private static readonly Guid ActiveSecretaryId = Guid.NewGuid();
+    private static readonly Guid ActiveMemberId = Guid.NewGuid();
 
     public CommitteesPageTests()
     {
@@ -26,6 +29,7 @@ public sealed class CommitteesPageTests : BunitContext, IAsyncLifetime
         Services.AddMudServices();
         Services.AddSingleton<IHttpClientFactory>(new Factory(this));
         Services.AddScoped<CommitteesApiClient>();
+        Services.AddScoped<UsersApiClient>();
     }
 
     public Task InitializeAsync() => Task.CompletedTask;
@@ -42,7 +46,12 @@ public sealed class CommitteesPageTests : BunitContext, IAsyncLifetime
         protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
         {
             var body = request.Content is null ? string.Empty : await request.Content.ReadAsStringAsync(cancellationToken);
-            owner._requests.Add((request.Method, request.RequestUri!.AbsolutePath, body));
+            if (request.RequestUri!.AbsolutePath == "/api/v1/users")
+            {
+                return Json($"[{{\"userId\":\"{ActiveSecretaryId}\",\"email\":\"sec@example.com\",\"displayName\":\"دبیر\",\"roles\":[],\"membershipActive\":true,\"userActive\":true}},{{\"userId\":\"{ActiveMemberId}\",\"email\":\"member@example.com\",\"displayName\":\"عضو\",\"roles\":[],\"membershipActive\":true,\"userActive\":true}}]");
+            }
+
+            owner._requests.Add((request.Method, request.RequestUri.AbsolutePath, body));
             return owner._respond(request);
         }
     }
@@ -111,6 +120,14 @@ public sealed class CommitteesPageTests : BunitContext, IAsyncLifetime
     private static Task ClickAsync(IRenderedComponent<MudDialogProvider> provider, string text) =>
         provider.InvokeAsync(() => provider.FindAll("button").Single(b => b.TextContent.Contains(text, StringComparison.Ordinal)).Click());
 
+    private static Task SelectSecretaryAsync(IRenderedComponent<MudDialogProvider> provider) =>
+        provider.FindComponents<MudSelect<Guid>>()[1].InvokeAsync(() =>
+            provider.FindComponents<MudSelect<Guid>>()[1].Instance.SelectedValuesChanged.InvokeAsync(new HashSet<Guid> { ActiveSecretaryId }));
+
+    private static Task SelectMembersAsync(IRenderedComponent<MudDialogProvider> provider) =>
+        provider.FindComponents<MudSelect<Guid>>()[0].InvokeAsync(() =>
+            provider.FindComponents<MudSelect<Guid>>()[0].Instance.SelectedValuesChanged.InvokeAsync(new HashSet<Guid> { ActiveSecretaryId, ActiveMemberId }));
+
     [Fact]
     public async Task Creating_a_committee_posts_the_trimmed_name_and_description()
     {
@@ -118,14 +135,18 @@ public sealed class CommitteesPageTests : BunitContext, IAsyncLifetime
         var provider = await OpenDialogAsync(null);
 
         provider.FindAll("input")[0].Input("  کمیتهٔ جدید  ");
+        await SelectMembersAsync(provider);
+        await SelectSecretaryAsync(provider);
         await ClickAsync(provider, "ذخیره");
 
-        provider.WaitForAssertion(() => Assert.Single(_requests));
-        var (method, path, body) = _requests[0];
+        provider.WaitForAssertion(() => Assert.Single(_requests, r => r.Path == "/api/v1/committees"));
+        var (method, path, body) = _requests.Single(r => r.Path == "/api/v1/committees");
         using var doc = JsonDocument.Parse(body);
         Assert.Equal(HttpMethod.Post, method);
         Assert.Equal("/api/v1/committees", path);
         Assert.Equal("کمیتهٔ جدید", doc.RootElement.GetProperty("name").GetString());
+        Assert.Equal(ActiveSecretaryId, doc.RootElement.GetProperty("secretaryUserIds")[0].GetGuid());
+        Assert.Equal(2, doc.RootElement.GetProperty("memberUserIds").GetArrayLength());
     }
 
     [Fact]
@@ -142,18 +163,22 @@ public sealed class CommitteesPageTests : BunitContext, IAsyncLifetime
     [Fact]
     public async Task Editing_puts_the_existing_committee_with_its_active_flag()
     {
-        var existing = JsonSerializer.Deserialize<CommitteeDto>(Committee("قدیمی", active: false), ReadOptions)!;
+        var existingJson = Committee("قدیمی", active: false).Replace("\"members\":[]", $"\"members\":[{{\"userId\":\"{ActiveSecretaryId}\",\"role\":\"Secretary\"}}]", StringComparison.Ordinal);
+        var existing = JsonSerializer.Deserialize<CommitteeDto>(existingJson, ReadOptions)!;
         _respond = _ => Json(Committee("قدیمی"));
         var provider = await OpenDialogAsync(existing);
+        await SelectMembersAsync(provider);
+        await SelectSecretaryAsync(provider);
 
         await ClickAsync(provider, "ذخیره");
 
-        provider.WaitForAssertion(() => Assert.Single(_requests));
-        var (method, path, body) = _requests[0];
+        provider.WaitForAssertion(() => Assert.Single(_requests, r => r.Path.StartsWith("/api/v1/committees/", StringComparison.Ordinal)));
+        var (method, path, body) = _requests.Single(r => r.Path.StartsWith("/api/v1/committees/", StringComparison.Ordinal));
         using var doc = JsonDocument.Parse(body);
         Assert.Equal(HttpMethod.Put, method);
         Assert.Equal($"/api/v1/committees/{existing.Id}", path);
         Assert.False(doc.RootElement.GetProperty("isActive").GetBoolean());
+        Assert.Equal(2, doc.RootElement.GetProperty("memberUserIds").GetArrayLength());
     }
 
     [Fact]
@@ -163,6 +188,8 @@ public sealed class CommitteesPageTests : BunitContext, IAsyncLifetime
         var provider = await OpenDialogAsync(null);
 
         provider.FindAll("input")[0].Input("تکراری");
+        await SelectMembersAsync(provider);
+        await SelectSecretaryAsync(provider);
         await ClickAsync(provider, "ذخیره");
 
         provider.WaitForAssertion(() => Assert.Contains("نام کمیته تکراری است.", provider.Markup, StringComparison.Ordinal));

@@ -20,7 +20,7 @@
         <HeaderContent>
             <MudTh>نام</MudTh>
             <MudTh>توضیحات</MudTh>
-            <MudTh>اعضا</MudTh>
+            <MudTh>دبیران</MudTh>
             <MudTh>وضعیت</MudTh>
             <MudTh><span class="visually-hidden">عملیات</span></MudTh>
         </HeaderContent>
@@ -36,7 +36,19 @@
                     <div class="ksc-rich-output ksc-inline-rich">@((MarkupString)RichTextContent.ToDisplayHtml(context.Description, Committee.MaxDescriptionLength))</div>
                 }
             </MudTd>
-            <MudTd DataLabel="اعضا">@PersianText.Digits(context.Members.Count)</MudTd>
+            <MudTd DataLabel="دبیران">
+                @{
+                    var secretaries = context.Members.Where(m => m.Role == CommitteeRole.Secretary).ToList();
+                }
+                @if (secretaries.Count == 0)
+                {
+                    <MudChip T="string" Size="Size.Small" Color="Color.Error">بدون دبیر</MudChip>
+                }
+                else
+                {
+                    <MudChip T="string" Size="Size.Small" Color="Color.Info">@PersianText.Digits(secretaries.Count) دبیر</MudChip>
+                }
+            </MudTd>
             <MudTd DataLabel="وضعیت">
                 <MudChip T="string" Size="Size.Small" Color="@(context.IsActive ? Color.Success : Color.Default)">@(context.IsActive ? "فعال" : "غیرفعال")</MudChip>
             </MudTd>
